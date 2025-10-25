@@ -51,6 +51,31 @@ class FirestoreService {
     return _db.collection('trips').where('userId', isEqualTo: uid).snapshots();
   }
 
+  /// Creates a new trip document for a user and stores summary details.
+  Future<String> createTrip({
+    required String userId,
+    required String destination,
+    required String title,
+    required Map<String, dynamic> itinerarySummary,
+    int? durationInDays,
+    List<String>? interests,
+    String? budget,
+  }) async {
+    final docRef = _db.collection('trips').doc();
+    await docRef.set({
+      'id': docRef.id,
+      'userId': userId,
+      'destination': destination,
+      'title': title,
+      'durationInDays': durationInDays,
+      'interests': interests ?? [],
+      'budget': budget,
+      'summary': itinerarySummary,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return docRef.id;
+  }
+
   // --- ADMIN-SPECIFIC FUNCTIONS ---
 
   /// Gets a real-time stream of ALL trips from all users for the admin dashboard.

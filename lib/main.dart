@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'config/theme.dart';
 import 'firebase_options.dart';
 import 'providers/theme_provider.dart';
 import 'screens/auth_gate.dart';
@@ -24,16 +23,14 @@ class TripGenieApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use a Consumer to listen for theme changes
+    // This Consumer widget will listen for changes in your ThemeProvider
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
           title: 'Trip Genie',
+          // ✅ UPDATED: Use the new 'themeData' getter to apply the theme globally
+          theme: themeProvider.themeData,
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme, // Your light theme
-          darkTheme: AppTheme.darkTheme, // Your dark theme
-          // This line automatically applies the correct theme
-          themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
           home: const AuthGate(),
         );
       },

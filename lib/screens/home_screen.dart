@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_bar_logo.dart';
@@ -163,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- Placeholder pages (no changes needed) ---
+// --- Simple Dashboard (Original Design) ---
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
 
@@ -201,12 +202,113 @@ class MyTripsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SafeArea(
-      child: Center(
-        child: Text(
-          'My Trips',
-          style: TextStyle(fontSize: 24),
-        ),
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const SafeArea(
+        child: Center(child: Text('Please sign in to view your trips.')),
+      );
+    }
+
+    final tripsStream = FirebaseFirestore.instance
+        .collection('trips')
+        .where('userId', isEqualTo: user.uid)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+
+    return SafeArea(
+      child: StreamBuilder<QuerySnapshot>(
+        stream: tripsStream,
+        builder: (context, snapshot) {
+          print('My Trips - User ID: ${user.uid}');
+          print('My Trips - Connection state: ${snapshot.connectionState}');
+          print('My Trips - Has error: ${snapshot.hasError}');
+          print('My Trips - Error: ${snapshot.error}');
+          print('My Trips - Data: ${snapshot.data}');
+          
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            print('My Trips - Error details: ${snapshot.error}');
+            return Center(child: Text('Failed to load trips: ${snapshot.error}'));
+          }
+          final docs = snapshot.data?.docs ?? [];
+          print('My Trips - Number of docs: ${docs.length}');
+          
+          if (docs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('No trips yet'),
+                  const SizedBox(height: 12),
+                  Text('User ID: ${user.uid}', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const PlanTripScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.add),
+                    label: const Text('Plan a New Trip'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(12),
+            itemCount: docs.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final data = docs[index].data() as Map<String, dynamic>;
+              final destination = data['destination'] as String? ?? 'Unknown';
+              final title = data['title'] as String? ?? 'Trip';
+              final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+              final duration = data['durationInDays'];
+              final interests = (data['interests'] as List?)?.cast<String>() ?? const [];
+              final summary = data['summary'] as Map<String, dynamic>?;
+              final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? const [];
+              final totalEstimatedCost = summary?['totalEstimatedCost'];
+
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.card_travel_outlined),
+                  title: Text(title),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(destination),
+                      if (duration != null) Text('Duration: $duration days'),
+                      if (interests.isNotEmpty) Text('Interests: ${interests.join(', ')}'),
+                      if (previewActivities.isNotEmpty) Text('Highlights: ${previewActivities.join(' · ')}'),
+                      if (totalEstimatedCost != null) Text('Est. cost: ₹$totalEstimatedCost'),
+                      if (createdAt != null) Text('Created: ${createdAt.toLocal()}'),
+                    ],
+                  ),
+                  onTap: () {
+                    // For now, simply show details; later we can rehydrate full itinerary
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: Text(title),
+                        content: Text('Destination: $destination'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Close'),
+                          )
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

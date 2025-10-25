@@ -101,12 +101,15 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
               final user = userDoc.data() as Map<String, dynamic>;
               final email = user['email'] ?? 'No email';
               final displayName = user['displayName'] ?? 'No name';
-              final uid = user['uid'] ?? '';
+              // Use the document ID as the UID for database operations
+              final uid = userDoc.id;
 
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.person)),
+                  leading: CircleAvatar(
+                    child: Text(displayName.isNotEmpty ? displayName[0].toUpperCase() : '?'),
+                  ),
                   title: Text(displayName),
                   subtitle: Text(email),
                   trailing: Row(

@@ -2,36 +2,49 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/firestore_service.dart';
+import '../config/theme.dart'; // Import your theme definitions
 
 class ThemeProvider with ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
-  bool _isDarkMode = false;
+  bool _isDarkMode = false; // Default to light mode
 
   bool get isDarkMode => _isDarkMode;
 
+  // ✅ NEW: A public getter that returns the correct ThemeData object based on the flag.
+  // This is the crucial missing link.
+  ThemeData get themeData => _isDarkMode ? AppTheme.darkTheme : AppTheme.lightTheme;
+
   ThemeProvider() {
+    // When the provider starts, load the theme from the device's local storage first for a fast startup.
     _loadThemeFromLocal();
+    // Then, listen for login/logout to sync with Firestore.
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
+        // If a user logs in, load their preference from the cloud.
         _loadThemeFromFirestore(user.uid);
+      } else {
+        // If a user logs out, reset to the default light theme.
+        resetToDefault();
       }
     });
   }
 
+  /// Toggles the theme and saves the preference to both local and cloud storage.
   void toggleTheme() {
     _isDarkMode = !_isDarkMode;
-    _saveThemeToLocal();
-    _saveThemeToFirestore();
+    _saveThemeToLocal();    // Save to device
+    _saveThemeToFirestore(); // Sync to cloud
     notifyListeners();
   }
 
-  // --- THIS FUNCTION WAS MISSING ---
-  // It resets the theme to light mode and saves the choice to the device
+  /// Resets the theme to light mode and saves the choice. Used on logout.
   Future<void> resetToDefault() async {
     _isDarkMode = false; // Default to light mode
     await _saveThemeToLocal();
     notifyListeners();
   }
+
+  // --- Private Helper Methods ---
 
   Future<void> _loadThemeFromLocal() async {
     final prefs = await SharedPreferences.getInstance();
@@ -46,9 +59,9 @@ class ThemeProvider with ChangeNotifier {
 
   Future<void> _loadThemeFromFirestore(String uid) async {
     final prefs = await _firestoreService.getUserPreferences(uid);
-    if (prefs != null) {
-      _isDarkMode = prefs['isDarkMode'] ?? _isDarkMode;
-      await _saveThemeToLocal();
+    if (prefs != null && prefs.containsKey('isDarkMode')) {
+      _isDarkMode = prefs['isDarkMode'];
+      await _saveThemeToLocal(); // Sync the cloud setting to the local device
       notifyListeners();
     }
   }

@@ -10,6 +10,7 @@ import 'auth_gate.dart'; // <-- Import the AuthGate for navigation
 import 'notifications_screen.dart';
 import 'plan_trip_screen.dart';
 import 'profile_page.dart';
+import 'ride_matching_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -125,6 +126,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: () => _onDrawerItemTapped(1),
                 ),
                 ListTile(
+                  leading: const Icon(Icons.directions_car_outlined),
+                  title: const Text('Find or Offer Rides'),
+                  onTap: () {
+                    Navigator.of(context).pop(); // Close drawer
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
+                    );
+                  },
+                ),
+                ListTile(
                   leading: const Icon(Icons.person_outline),
                   title: const Text('Profile'),
                   onTap: () => _onDrawerItemTapped(2),
@@ -190,6 +201,20 @@ class DashboardPage extends StatelessWidget {
               icon: const Icon(Icons.add),
               label: const Text('Plan a New Trip'),
             ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
+                );
+              },
+              icon: const Icon(Icons.directions_car),
+              label: const Text('Find or Offer Rides'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+              ),
+            ),
           ],
         ),
       ),
@@ -224,7 +249,7 @@ class MyTripsPage extends StatelessWidget {
           print('My Trips - Has error: ${snapshot.hasError}');
           print('My Trips - Error: ${snapshot.error}');
           print('My Trips - Data: ${snapshot.data}');
-          
+
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -234,7 +259,7 @@ class MyTripsPage extends StatelessWidget {
           }
           final docs = snapshot.data?.docs ?? [];
           print('My Trips - Number of docs: ${docs.length}');
-          
+
           if (docs.isEmpty) {
             return Center(
               child: Column(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 
 class ManageUsersScreen extends StatefulWidget {
@@ -11,6 +12,22 @@ class ManageUsersScreen extends StatefulWidget {
 
 class _ManageUsersScreenState extends State<ManageUsersScreen> {
   final AuthService _authService = AuthService();
+  bool _isAdmin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAdminStatus();
+  }
+
+  Future<void> _checkAdminStatus() async {
+    final isAdmin = await _authService.isAdmin();
+    setState(() {
+      _isAdmin = isAdmin;
+    });
+    // Debug: print('Admin status: $isAdmin');
+    // Debug: print('Current user email: ${FirebaseAuth.instance.currentUser?.email}');
+  }
 
   // Function to show the delete confirmation dialog
   void _showDeleteConfirmationDialog(String uid, String displayName) {
@@ -78,6 +95,17 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Users'),
+        actions: [
+          if (_isAdmin)
+            const Icon(Icons.admin_panel_settings, color: Colors.green)
+          else
+            const Icon(Icons.warning, color: Colors.orange),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => setState(() {}),
+            tooltip: 'Refresh',
+          ),
+        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('users').snapshots(),
@@ -85,11 +113,34 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No users found.'));
-          }
           if (snapshot.hasError) {
-            return const Center(child: Text('Something went wrong.'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Error: ${snapshot.error}'),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => setState(() {}),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.people_outline, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('No users found.'),
+                ],
+              ),
+            );
           }
 
           final users = snapshot.data!.docs;
@@ -137,6 +188,43 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> {
           );
         },
       ),
+      floatingActionButton: _isAdmin
+          ? FloatingActionButton(
+              onPressed: _createTestUser,
+              tooltip: 'Create Test User',
+              child: const Icon(Icons.person_add),
+            )
+          : null,
     );
+  }
+
+  Future<void> _createTestUser() async {
+    try {
+      final testUserData = {
+        'displayName': 'Test User ${DateTime.now().millisecondsSinceEpoch}',
+        'email': 'test${DateTime.now().millisecondsSinceEpoch}@example.com',
+        'uid': 'test_${DateTime.now().millisecondsSinceEpoch}',
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc('test_${DateTime.now().millisecondsSinceEpoch}')
+          .set(testUserData);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Test user created successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error creating test user: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

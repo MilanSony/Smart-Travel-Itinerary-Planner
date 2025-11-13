@@ -94,7 +94,7 @@ class PdfService {
                 if (itinerary.totalEstimatedCost != null) ...[
                   pw.SizedBox(height: 10),
                   pw.Text(
-                    'Total Cost: ₹${itinerary.totalEstimatedCost!.toStringAsFixed(0)}',
+                    'Total Cost: Rs. ${itinerary.totalEstimatedCost!.toStringAsFixed(0)}',
                     style: pw.TextStyle(fontSize: 16, color: PdfColors.black),
                   ),
                 ],
@@ -223,27 +223,27 @@ class PdfService {
                               color: PdfColors.black,
                             ),
                           ),
-                          if (activity.cost != null) ...[
-                            pw.SizedBox(height: 8),
-                            pw.Row(
-                              children: [
-                                pw.Text(
-                                  'Cost: ',
-                                  style: pw.TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: pw.FontWeight.bold,
-                                  ),
-                                ),
-                                pw.Text(
-                                  activity.cost!,
-                                  style: pw.TextStyle(
-                                    fontSize: 12,
-                                    color: PdfColors.green800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                  if (activity.cost != null) ...[
+                    pw.SizedBox(height: 8),
+                    pw.Row(
+                      children: [
+                        pw.Text(
+                          'Cost: ',
+                          style: pw.TextStyle(
+                            fontSize: 12,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        pw.Text(
+                          activity.cost!.replaceAll('₹', 'Rs. '),
+                          style: pw.TextStyle(
+                            fontSize: 12,
+                            color: PdfColors.green800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                         ],
                       ),
                     );
@@ -269,7 +269,7 @@ class PdfService {
                             ),
                           ),
                           pw.Text(
-                            '₹${dayPlan.totalEstimatedCost!.toStringAsFixed(0)}',
+                            'Rs. ${dayPlan.totalEstimatedCost!.toStringAsFixed(0)}',
                             style: pw.TextStyle(
                               fontSize: 14,
                               fontWeight: pw.FontWeight.bold,
@@ -400,7 +400,7 @@ class PdfService {
                   pw.SizedBox(height: 10),
                   if (itinerary.totalEstimatedCost != null)
                     pw.Text(
-                      'Estimated Cost: ₹${itinerary.totalEstimatedCost!.toStringAsFixed(0)}',
+                      'Estimated Cost: Rs. ${itinerary.totalEstimatedCost!.toStringAsFixed(0)}',
                       style: pw.TextStyle(
                         fontSize: 16,
                         color: PdfColors.white,
@@ -465,7 +465,7 @@ class PdfService {
                     ),
                   ),
                   pw.Text(
-                    '₹${itinerary.totalEstimatedCost!.toStringAsFixed(0)}',
+                    'Rs. ${itinerary.totalEstimatedCost!.toStringAsFixed(0)}',
                     style: pw.TextStyle(
                       fontSize: 16,
                       fontWeight: pw.FontWeight.bold,
@@ -506,7 +506,7 @@ class PdfService {
                       ),
                     ),
                     pw.Text(
-                      '₹${dayPlan.totalEstimatedCost?.toStringAsFixed(0) ?? '0'}',
+                      'Rs. ${dayPlan.totalEstimatedCost?.toStringAsFixed(0) ?? '0'}',
                       style: pw.TextStyle(
                         fontSize: 14,
                         fontWeight: pw.FontWeight.bold,
@@ -548,7 +548,7 @@ class PdfService {
                 pw.Spacer(),
                 if (dayPlan.totalEstimatedCost != null)
                   pw.Text(
-                    '₹${dayPlan.totalEstimatedCost!.toStringAsFixed(0)}',
+                    'Rs. ${dayPlan.totalEstimatedCost!.toStringAsFixed(0)}',
                     style: pw.TextStyle(
                       fontSize: 18,
                       fontWeight: pw.FontWeight.bold,
@@ -649,7 +649,7 @@ class PdfService {
                           ),
                         ),
                         pw.Text(
-                          activity.cost!,
+                          activity.cost!.replaceAll('₹', 'Rs. '),
                           style: pw.TextStyle(
                             fontSize: 12,
                             color: PdfColors.green800,

@@ -3,6 +3,114 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/ride_matching_service.dart';
 import '../widgets/gradient_background.dart';
 
+// Comprehensive list of valid places in India
+const List<String> validPlaces = [
+  // Kerala
+  'Thiruvananthapuram', 'Kochi', 'Ernakulam', 'Kollam', 'Thrissur', 'Kozhikode', 'Palakkad',
+  'Malappuram', 'Kannur', 'Alappuzha', 'Kottayam', 'Idukki', 'Kasaragod', 'Pathanamthitta', 'Wayanad',
+  'Aluva', 'Paravur', 'Arakunnam', 'Vaikom', 'Karunagappally', 'Kayamkulam', 'Chengannur', 'Changanassery',
+  'Thiruvananthapuram Central', 'Kochi Central', 'Ernakulam Junction', 'Kollam Junction', 
+  'Thrissur Railway Station', 'Kochi Airport', 'Thiruvananthapuram Airport',
+  
+  // Karnataka
+  'Bangalore', 'Mysore', 'Mangalore', 'Hubli', 'Belgaum', 'Gulbarga', 'Davanagere', 'Bellary', 
+  'Tumkur', 'Raichur', 'Shimoga', 'Udupi', 'Mysore Junction', 'Bangalore City Railway Station',
+  'Mangalore Railway Station', 'Hubli Junction', 'Belgaum Railway Station', 'Bangalore Airport',
+  
+  // Tamil Nadu
+  'Chennai', 'Coimbatore', 'Madurai', 'Salem', 'Tiruchirappalli', 'Tirunelveli', 'Erode', 
+  'Dindigul', 'Tanjore', 'Vellore', 'Thanjavur', 'Tuticorin', 'Chennai Central', 'Chennai Airport',
+  
+  // Maharashtra
+  'Mumbai', 'Pune', 'Nagpur', 'Aurangabad', 'Nashik', 'Amravati', 'Solapur', 'Sangli', 
+  'Nanded', 'Kolhapur', 'Mumbai Central', 'Pune Railway Station', 'Mumbai Airport', 'Pune Airport',
+  
+  // Goa
+  'Panaji', 'Margao', 'Vasco', 'Mapusa', 'Goa',
+  
+  // Delhi
+  'Delhi', 'New Delhi', 'New Delhi Railway Station', 'Delhi Airport',
+  
+  // Andhra Pradesh
+  'Hyderabad', 'Vijayawada', 'Visakhapatnam', 'Guntur', 'Tirupati', 'Hyderabad Railway Station',
+  'Secunderabad Junction', 'Hyderabad Airport',
+  
+  // Gujarat
+  'Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Jamnagar', 'Ahmedabad Railway Station',
+  'Ahmedabad Airport',
+  
+  // West Bengal
+  'Kolkata', 'Howrah', 'Howrah Junction', 'Sealdah', 'Kolkata Airport',
+  
+  // Rajasthan
+  'Jaipur', 'Jodhpur', 'Udaipur', 'Ajmer', 'Jaipur Railway Station', 'Jaipur Airport',
+  
+  // Uttar Pradesh
+  'Lucknow', 'Kanpur', 'Varanasi', 'Allahabad', 'Agra', 'Lucknow Railway Station',
+  
+  // Madhya Pradesh
+  'Indore', 'Bhopal', 'Jabalpur', 'Gwalior',
+  
+  // Punjab
+  'Amritsar', 'Ludhiana', 'Chandigarh', 'Jalandhar',
+  
+  // Haryana
+  'Gurgaon', 'Faridabad', 'Panipat',
+  
+  // Bihar
+  'Patna', 'Gaya', 'Bhagalpur',
+  
+  // Orissa
+  'Bhubaneswar', 'Cuttack', 'Puri',
+  
+  // Assam
+  'Guwahati', 'Jorhat', 'Tezpur',
+  
+  // Jammu and Kashmir
+  'Srinagar', 'Jammu', 'Leh',
+  
+  // Himachal Pradesh
+  'Shimla', 'Manali', 'Dharamshala',
+  
+  // Uttarakhand
+  'Dehradun', 'Haridwar', 'Nainital',
+  
+  // Telangana
+  'Warangal', 'Karimnagar', 'Nizamabad',
+  
+  // Kerala Cities and Towns
+  'Adoor', 'Alappuzha', 'Attingal', 'Beypore', 'Chalakudy', 'Changanassery', 'Cherthala',
+  'Guruvayur', 'Kannur', 'Kasargod', 'Kothamangalam', 'Manjeri', 'Muvattupuzha', 'Nedumangad',
+  'Neyyattinkara', 'Ottapalam', 'Palakkad', 'Payyanur', 'Perinthalmanna', 'Ponnani', 'Punalur',
+  'Shoranur', 'Taliparamba', 'Thalassery', 'Tirur', 'Varkala',
+  
+  // Karnataka Cities
+  'Bangalore', 'Bellary', 'Bijapur', 'Davangere', 'Gadag', 'Gulbarga', 'Hassan', 'Karwar',
+  'Koppal', 'Mandya', 'Mangalore', 'Raichur', 'Shimoga', 'Tumkur', 'Udupi', 'Yadgir',
+  
+  // Tamil Nadu Cities
+  'Dindigul', 'Kanchipuram', 'Karaikudi', 'Kumbakonam', 'Mayiladuthurai', 'Namakkal',
+  'Pudukkottai', 'Ramanathapuram', 'Sivakasi', 'Thanjavur', 'Thoothukudi', 'Tiruppur',
+  'Tirunelveli', 'Tiruvannamalai', 'Vellore',
+  
+  // Maharashtra Cities
+  'Ahmednagar', 'Akola', 'Amravati', 'Bhir', 'Buldhana', 'Jalgaon', 'Kolhapur',
+  'Latur', 'Nagpur', 'Nashik', 'Osmanabad', 'Parbhani', 'Pune', 'Sangli', 'Satara',
+  'Solapur', 'Thane', 'Wardha', 'Yavatmal',
+  
+  // Railway Stations (Major)
+  'Bangalore City Railway Station', 'Mumbai Central', 'Chennai Central', 'Howrah Junction',
+  'New Delhi Railway Station', 'Kolkata Howrah', 'Secunderabad Junction', 'Ahmedabad Railway Station',
+  'Jaipur Railway Station', 'Lucknow Railway Station', 'Pune Railway Station',
+  'Mangalore Railway Station', 'Hubli Junction', 'Thrissur Railway Station',
+  'Ernakulam Junction', 'Kochi Central', 'Kollam Junction',
+  
+  // Airports
+  'Delhi Airport', 'Mumbai Airport', 'Bangalore Airport', 'Chennai Airport', 'Kolkata Airport',
+  'Hyderabad Airport', 'Pune Airport', 'Cochin Airport', 'Thiruvananthapuram Airport',
+  'Goa Airport', 'Jaipur Airport', 'Ahmedabad Airport',
+];
+
 class OfferRideScreen extends StatefulWidget {
   const OfferRideScreen({super.key});
 
@@ -172,6 +280,16 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter destination';
                   }
+                  // Check if the entered value matches any valid place (case-insensitive)
+                  final enteredValue = value.trim();
+                  final isInvalid = !validPlaces.any(
+                    (place) => place.toLowerCase() == enteredValue.toLowerCase() ||
+                               place.toLowerCase().contains(enteredValue.toLowerCase()) ||
+                               enteredValue.toLowerCase().contains(place.toLowerCase())
+                  );
+                  if (isInvalid) {
+                    return 'Invalid place chosen. Please enter a valid place in India (e.g., Kochi, Goa, Chennai)';
+                  }
                   return null;
                 },
               ),
@@ -189,6 +307,16 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
                     return 'Please enter pickup location';
+                  }
+                  // Check if the entered value matches any valid place (case-insensitive)
+                  final enteredValue = value.trim();
+                  final isInvalid = !validPlaces.any(
+                    (place) => place.toLowerCase() == enteredValue.toLowerCase() ||
+                               place.toLowerCase().contains(enteredValue.toLowerCase()) ||
+                               enteredValue.toLowerCase().contains(place.toLowerCase())
+                  );
+                  if (isInvalid) {
+                    return 'Invalid place chosen. Please enter a valid place in India (e.g., Mangalore, Goa, Mumbai)';
                   }
                   return null;
                 },

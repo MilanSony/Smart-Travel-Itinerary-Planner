@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/image_background.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -50,7 +50,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         leading: BackButton(color: Theme.of(context).appBarTheme.iconTheme?.color),
       ),
       extendBodyBehindAppBar: true,
-      body: GradientBackground(
+      body: ImageBackground(
+        imagePath: 'assets/backgrounds/auth_bg.jpg',
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(

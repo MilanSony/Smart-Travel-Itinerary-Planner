@@ -79,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+      extendBodyBehindAppBar: false,
       drawer: Drawer(
         child: GradientBackground(
           child: Theme(
@@ -166,53 +167,202 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      body: GradientBackground(
-        child: Center(
+      body: Center(
           child: _pages.elementAt(_currentPageIndex),
-        ),
       ),
     );
   }
 }
 
-// --- Simple Dashboard (Original Design) ---
+// --- Modern Professional Dashboard Design ---
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     final User? user = FirebaseAuth.instance.currentUser;
-    return SafeArea(
-      child: Center(
+    final theme = Theme.of(context);
+    final userName = () {
+      final displayName = user?.displayName?.trim();
+      if (displayName == null || displayName.isEmpty) return 'Traveler';
+      final parts = displayName.split(' ').where((part) => part.isNotEmpty).toList();
+      return parts.isNotEmpty ? parts.first : displayName;
+    }();
+    
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.asset(
+          'assets/backgrounds/home_hero.jpg',
+          fit: BoxFit.cover,
+          errorBuilder: (context, _, __) {
+            return Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFC5CAE9),
+                    Color(0xFFB3E5FC),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withOpacity(0.15),
+                Colors.black.withOpacity(0.4),
+              ],
+            ),
+          ),
+        ),
+        SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Welcome, $userName!',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          shadows: const [
+                            Shadow(
+                              color: Colors.black54,
+                              offset: Offset(0, 2),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ) ??
+                        const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black54,
+                              offset: Offset(0, 2),
+                              blurRadius: 6,
+                            ),
+                          ],
+                        ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const PlanTripScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.add_circle_outline_rounded),
+                    label: const Text('Plan a New Trip'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                      backgroundColor: const Color(0xFF4C74E0),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      elevation: 4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.directions_car_rounded),
+                    label: const Text('Find or Offer Rides'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                      backgroundColor: const Color(0xFF26A69A),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      elevation: 4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Modern Action Card Widget
+class _ModernActionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Gradient gradient;
+  final VoidCallback onTap;
+
+  const _ModernActionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.gradient,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Welcome, ${user?.displayName ?? 'Traveller'}!',
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: Colors.white, size: 28),
             ),
             const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const PlanTripScreen()),
-                );
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Plan a New Trip'),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
-                );
-              },
-              icon: const Icon(Icons.directions_car),
-              label: const Text('Find or Offer Rides'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[600],
-                foregroundColor: Colors.white,
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withOpacity(0.9),
               ),
             ),
           ],
@@ -222,6 +372,253 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
+// Modern Impressive Destination Card Widget
+class _ModernDestinationCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final String price;
+  final String days;
+  final Gradient gradient;
+
+  const _ModernDestinationCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.price,
+    required this.days,
+    required this.gradient,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 200,
+      height: 260,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: gradient,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: Stack(
+          children: [
+            // Animated background pattern
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withOpacity(0.1),
+                      Colors.transparent,
+                      Colors.white.withOpacity(0.05),
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                ),
+              ),
+            ),
+            
+            // Large decorative icon in background
+            Positioned(
+              top: -30,
+              right: -30,
+              child: Opacity(
+                opacity: 0.15,
+                child: Icon(icon, size: 150, color: Colors.white),
+              ),
+            ),
+            
+            // Small decorative dots pattern
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _DotsPatternPainter(),
+              ),
+            ),
+            
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top row with favorite and icon
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Icon(icon, color: Colors.white, size: 28),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.favorite_border_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const Spacer(),
+                  
+                  // Destination info
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.8,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black26,
+                          offset: Offset(0, 2),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.95),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withOpacity(0.3),
+                          offset: const Offset(0, 1),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Price and days row
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.25),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'From',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              price,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            days,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Custom painter for dots pattern
+class _DotsPatternPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.1)
+      ..style = PaintingStyle.fill;
+
+    const spacing = 20.0;
+    for (double x = 0; x < size.width; x += spacing) {
+      for (double y = 0; y < size.height; y += spacing) {
+        canvas.drawCircle(Offset(x, y), 1.5, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class MyTripsPage extends StatelessWidget {
   const MyTripsPage({super.key});
 
@@ -229,8 +626,10 @@ class MyTripsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const SafeArea(
-        child: Center(child: Text('Please sign in to view your trips.')),
+      return GradientBackground(
+        child: const SafeArea(
+          child: Center(child: Text('Please sign in to view your trips.')),
+        ),
       );
     }
 
@@ -240,100 +639,101 @@ class MyTripsPage extends StatelessWidget {
         .orderBy('createdAt', descending: true)
         .snapshots();
 
-    return SafeArea(
-      child: StreamBuilder<QuerySnapshot>(
-        stream: tripsStream,
-        builder: (context, snapshot) {
-          print('My Trips - User ID: ${user.uid}');
-          print('My Trips - Connection state: ${snapshot.connectionState}');
-          print('My Trips - Has error: ${snapshot.hasError}');
-          print('My Trips - Error: ${snapshot.error}');
-          print('My Trips - Data: ${snapshot.data}');
+    return GradientBackground(
+      child: SafeArea(
+        child: StreamBuilder<QuerySnapshot>(
+          stream: tripsStream,
+          builder: (context, snapshot) {
+            print('My Trips - User ID: ${user.uid}');
+            print('My Trips - Connection state: ${snapshot.connectionState}');
+            print('My Trips - Has error: ${snapshot.hasError}');
+            print('My Trips - Error: ${snapshot.error}');
+            print('My Trips - Data: ${snapshot.data}');
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            print('My Trips - Error details: ${snapshot.error}');
-            return Center(child: Text('Failed to load trips: ${snapshot.error}'));
-          }
-          final docs = snapshot.data?.docs ?? [];
-          print('My Trips - Number of docs: ${docs.length}');
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              print('My Trips - Error details: ${snapshot.error}');
+              return Center(child: Text('Failed to load trips: ${snapshot.error}'));
+            }
+            final docs = snapshot.data?.docs ?? [];
+            print('My Trips - Number of docs: ${docs.length}');
 
-          if (docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('No trips yet'),
-                  const SizedBox(height: 12),
-                  Text('User ID: ${user.uid}', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const PlanTripScreen()),
-                      );
-                    },
-                    icon: const Icon(Icons.add),
-                    label: const Text('Plan a New Trip'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.separated(
-            padding: const EdgeInsets.all(12),
-            itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
-              final destination = data['destination'] as String? ?? 'Unknown';
-              final title = data['title'] as String? ?? 'Trip';
-              final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
-              final duration = data['durationInDays'];
-              final interests = (data['interests'] as List?)?.cast<String>() ?? const [];
-              final summary = data['summary'] as Map<String, dynamic>?;
-              final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? const [];
-              final totalEstimatedCost = summary?['totalEstimatedCost'];
-
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.card_travel_outlined),
-                  title: Text(title),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(destination),
-                      if (duration != null) Text('Duration: $duration days'),
-                      if (interests.isNotEmpty) Text('Interests: ${interests.join(', ')}'),
-                      if (previewActivities.isNotEmpty) Text('Highlights: ${previewActivities.join(' · ')}'),
-                      if (totalEstimatedCost != null) Text('Est. cost: ₹$totalEstimatedCost'),
-                      if (createdAt != null) Text('Created: ${createdAt.toLocal()}'),
-                    ],
-                  ),
-                  onTap: () {
-                    // For now, simply show details; later we can rehydrate full itinerary
-                    showDialog(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: Text(title),
-                        content: Text('Destination: $destination'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Close'),
-                          )
-                        ],
-                      ),
-                    );
-                  },
+            if (docs.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('No trips yet'),
+                    const SizedBox(height: 12),
+                    Text('User ID: ${user.uid}', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (context) => const PlanTripScreen()),
+                        );
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Plan a New Trip'),
+                    ),
+                  ],
                 ),
               );
-            },
-          );
-        },
+            }
+
+            return ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: docs.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final data = docs[index].data() as Map<String, dynamic>;
+                final destination = data['destination'] as String? ?? 'Unknown';
+                final title = data['title'] as String? ?? 'Trip';
+                final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+                final duration = data['durationInDays'];
+                final interests = (data['interests'] as List?)?.cast<String>() ?? const [];
+                final summary = data['summary'] as Map<String, dynamic>?;
+                final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? const [];
+                final totalEstimatedCost = summary?['totalEstimatedCost'];
+
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.card_travel_outlined),
+                    title: Text(title),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(destination),
+                        if (duration != null) Text('Duration: $duration days'),
+                        if (interests.isNotEmpty) Text('Interests: ${interests.join(', ')}'),
+                        if (previewActivities.isNotEmpty) Text('Highlights: ${previewActivities.join(' · ')}'),
+                        if (totalEstimatedCost != null) Text('Est. cost: ₹$totalEstimatedCost'),
+                        if (createdAt != null) Text('Created: ${createdAt.toLocal()}'),
+                      ],
+                    ),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: Text(title),
+                          content: Text('Destination: $destination'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close'),
+                            )
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

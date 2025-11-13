@@ -161,6 +161,8 @@ class RideMatch {
   final DateTime updatedAt;
   final String? driverPickupLocation;
   final String? driverPickupTime;
+  final String? vehicleEntryOTP; // OTP sent to passenger's email for vehicle entry verification
+  final bool vehicleEntryVerified; // Whether passenger has been verified to enter vehicle
 
   RideMatch({
     required this.id,
@@ -179,6 +181,8 @@ class RideMatch {
     required this.updatedAt,
     this.driverPickupLocation,
     this.driverPickupTime,
+    this.vehicleEntryOTP,
+    this.vehicleEntryVerified = false,
   });
 
   factory RideMatch.fromFirestore(DocumentSnapshot doc) {
@@ -200,6 +204,8 @@ class RideMatch {
       updatedAt: (data['updatedAt'] as Timestamp).toDate(),
       driverPickupLocation: data['driverPickupLocation'],
       driverPickupTime: data['driverPickupTime'],
+      vehicleEntryOTP: data['vehicleEntryOTP'],
+      vehicleEntryVerified: data['vehicleEntryVerified'] ?? false,
     );
   }
 
@@ -220,6 +226,8 @@ class RideMatch {
       'updatedAt': Timestamp.fromDate(updatedAt),
       'driverPickupLocation': driverPickupLocation,
       'driverPickupTime': driverPickupTime,
+      'vehicleEntryOTP': vehicleEntryOTP,
+      'vehicleEntryVerified': vehicleEntryVerified,
     };
   }
 }

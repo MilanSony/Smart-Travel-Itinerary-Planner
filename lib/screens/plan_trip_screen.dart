@@ -5,7 +5,28 @@ import '../models/itinerary_model.dart';
 import '../services/itinerary_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firestore_service.dart';
+import '../widgets/gradient_background.dart';
 import 'itinerary_screen.dart';
+import 'offer_ride_screen.dart' show validPlaces;
+
+// Custom input formatter to allow only letters, spaces, and common place name characters
+class PlaceNameFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    // Allow only letters and spaces (letters-only validation for places)
+    final allowedPattern = RegExp(r'^[a-zA-Z\s]+$');
+    
+    if (newValue.text.isEmpty) {
+      return newValue;
+    }
+    
+    if (allowedPattern.hasMatch(newValue.text)) {
+      return newValue;
+    }
+    
+    return oldValue;
+  }
+}
 
 class PlanTripScreen extends StatefulWidget {
   const PlanTripScreen({super.key});
@@ -179,6 +200,21 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
       _showErrorSnackBar('For an odd number of travelers, please select another transport option.');
       return;
     }
+    
+    // Additional validation: Verify destination is a valid place
+    final destination = _destinationController.text.trim();
+    final isDestinationValid = validPlaces.any(
+      (place) => place.toLowerCase() == destination.toLowerCase() ||
+                 (destination.length >= 3 && (
+                   place.toLowerCase().startsWith(destination.toLowerCase()) ||
+                   destination.toLowerCase().startsWith(place.toLowerCase())
+                 ))
+    );
+    
+    if (!isDestinationValid) {
+      _showErrorSnackBar('Please enter a valid destination from the list of available places.');
+      return;
+    }
 
     setState(() => _isLoading = true);
     
@@ -192,7 +228,6 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
     );
     
     try {
-      final destination = _destinationController.text.trim();
       final duration = _endDate!.difference(_startDate!).inDays + 1;
 
       final itinerary = await _itineraryService.generateItinerary(
@@ -269,40 +304,91 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Plan a New Trip'),
         foregroundColor: Colors.white,
-        backgroundColor: Colors.deepPurple,
-        elevation: 2,
+        elevation: 0,
       ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      body: GradientBackground(
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               _buildSectionHeader('Where do you want to go?'),
               TextFormField(
                 controller: _destinationController,
-                validator: (value) => (value == null || value.trim().isEmpty) ? 'Please enter a destination' : null,
-                decoration: _buildInputDecoration('Enter Destination', Icons.location_on_outlined),
+                inputFormatters: [
+                  PlaceNameFormatter(),
+                ],
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter a destination';
+                  }
+                  
+                  final enteredValue = value.trim();
+                  
+                  // Strict validation: Only accept exact matches or close matches of valid places
+                  final isExactMatch = validPlaces.any(
+                    (place) => place.toLowerCase() == enteredValue.toLowerCase()
+                  );
+                  
+                  if (!isExactMatch) {
+                    // Also check for partial but significant matches (at least 3 characters for partial match)
+                    if (enteredValue.length >= 3) {
+                      final hasPartialMatch = validPlaces.any(
+                        (place) => place.toLowerCase().startsWith(enteredValue.toLowerCase()) ||
+                                   enteredValue.toLowerCase().startsWith(place.toLowerCase())
+                      );
+                      
+                      if (!hasPartialMatch) {
+                        // Get suggestions for invalid input
+                        final suggestions = validPlaces
+                            .where((place) => 
+                                place.toLowerCase().startsWith(enteredValue.substring(0, 2).toLowerCase()) ||
+                                place.toLowerCase().contains(enteredValue.toLowerCase()) ||
+                                enteredValue.toLowerCase().contains(place.toLowerCase()))
+                            .take(3)
+                            .join(', ');
+                        
+                        return 'Invalid destination. Valid places: ${suggestions.isEmpty ? 'Kochi, Goa, Mumbai, Bangalore' : suggestions}';
+                      }
+                    }
+                  }
+                  
+                  return null;
+                },
+                decoration: _buildInputDecoration('Enter Destination', Icons.location_on_outlined)
+                  .copyWith(
+                    helperText: 'Enter a valid Indian city or place (letters only)',
+                  ),
               ),
               _buildSectionHeader('Select your travel dates'),
               InkWell(
                 onTap: _selectDateRange,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
                   child: Row(
                     children: [
-                      const Icon(Icons.calendar_today_outlined, color: Colors.grey),
+                      Icon(Icons.calendar_today_outlined, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 12),
                       Text(
                         _startDate == null ? 'Select Dates' : '${DateFormat('dd MMM yyyy').format(_startDate!)} - ${DateFormat('dd MMM yyyy').format(_endDate!)}',
-                        style: TextStyle(color: _startDate == null ? Colors.grey.shade600 : Colors.black, fontSize: 16),
+                        style: TextStyle(
+                          color: _startDate == null ? Colors.grey.shade600 : Colors.black,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
@@ -351,13 +437,21 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
                 runSpacing: 8.0,
                 children: _interestOptions.map((interest) {
                   final isSelected = _selectedInterests.contains(interest);
+                  final theme = Theme.of(context);
                   return FilterChip(
                     label: Text(interest),
                     selected: isSelected,
                     onSelected: (selected) => setState(() => selected ? _selectedInterests.add(interest) : _selectedInterests.remove(interest)),
-                    selectedColor: Colors.deepPurple.withOpacity(0.1),
-                    checkmarkColor: Colors.deepPurple,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? Colors.deepPurple : Colors.grey.shade300)),
+                    selectedColor: theme.colorScheme.primary.withOpacity(0.1),
+                    checkmarkColor: theme.colorScheme.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: isSelected ? theme.colorScheme.primary : Colors.grey.shade300,
+                        width: isSelected ? 1.5 : 1,
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                   );
                 }).toList(),
               ),
@@ -365,9 +459,9 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
               ElevatedButton(
                 onPressed: _isLoading ? null : _handleGenerateItinerary,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  minimumSize: const Size(double.infinity, 56),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 2,
                 ),
                 child: _isLoading
                     ? const Row(
@@ -387,37 +481,81 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
                       )
                     : const Text('Generate Itinerary', style: TextStyle(fontSize: 18)),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildSectionHeader(String title) => Padding(
-    padding: const EdgeInsets.only(top: 20.0, bottom: 12.0),
-    child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black54)),
-  );
+  Widget _buildSectionHeader(String title) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 24.0, bottom: 12.0),
+      child: Text(
+        title,
+        style: theme.textTheme.headlineSmall?.copyWith(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
 
-  InputDecoration _buildInputDecoration(String hintText, IconData icon) => InputDecoration(
-    hintText: hintText,
-    prefixIcon: Icon(icon, color: Colors.grey),
-    filled: true,
-    fillColor: Colors.white,
-    contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
-  );
+  InputDecoration _buildInputDecoration(String hintText, IconData icon) {
+    final theme = Theme.of(context);
+    return InputDecoration(
+      hintText: hintText,
+      prefixIcon: Icon(icon, color: theme.colorScheme.primary),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
+      ),
+    );
+  }
 
-  Widget _buildTravelerCounter() => Container(
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        IconButton(icon: const Icon(Icons.remove, color: Colors.deepPurple), onPressed: () => {if (_travelers > 1) setState(() => _travelers--)}),
-        Text('$_travelers', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        IconButton(icon: const Icon(Icons.add, color: Colors.deepPurple), onPressed: () => setState(() => _travelers++)),
-      ],
-    ),
-  );
+  Widget _buildTravelerCounter() {
+    final theme = Theme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: Icon(Icons.remove, color: theme.colorScheme.primary),
+            onPressed: () {
+              if (_travelers > 1) setState(() => _travelers--);
+            },
+          ),
+          Text(
+            '$_travelers',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.add, color: theme.colorScheme.primary),
+            onPressed: () => setState(() => _travelers++),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -1,10 +1,78 @@
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/ride_model.dart';
+import 'knn_service.dart';
 
 class RideMatchingService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final KnnService _knnService = KnnService(k: 5);
+  final Random _random = Random();
+
+  // --- VEHICLE ENTRY OTP VERIFICATION ---
+
+  /// Generates a 6-digit OTP for vehicle entry
+  String _generateVehicleEntryOTP() {
+    return (100000 + _random.nextInt(900000)).toString();
+  }
+
+  /// Generates and sends vehicle entry OTP to passenger's email
+  /// Returns the OTP for display (in production, this would send email via Cloud Functions or email service)
+  Future<String> generateAndSendVehicleEntryOTP(String matchId, String passengerEmail) async {
+    final otp = _generateVehicleEntryOTP();
+    
+    // Store OTP in Firestore
+    await _db.collection('ride_matches').doc(matchId).update({
+      'vehicleEntryOTP': otp,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    
+    // TODO: Send email to passenger's email address
+    // In production, use Firebase Cloud Functions or email service (SendGrid, Mailgun, etc.)
+    // For now, the OTP is stored and can be retrieved
+    print('Vehicle Entry OTP for $passengerEmail: $otp');
+    print('TODO: Send email to $passengerEmail with OTP: $otp');
+    
+    return otp;
+  }
+
+  /// Verifies vehicle entry OTP entered by driver
+  Future<bool> verifyVehicleEntryOTP(String matchId, String otp) async {
+    try {
+      final matchDoc = await _db.collection('ride_matches').doc(matchId).get();
+      if (!matchDoc.exists) return false;
+      
+      final matchData = matchDoc.data()!;
+      final storedOTP = matchData['vehicleEntryOTP'] as String?;
+      
+      if (storedOTP == null || storedOTP != otp.trim()) {
+        return false;
+      }
+      
+      // Mark vehicle entry as verified
+      await _db.collection('ride_matches').doc(matchId).update({
+        'vehicleEntryVerified': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      
+      return true;
+    } catch (e) {
+      print('Error verifying vehicle entry OTP: $e');
+      return false;
+    }
+  }
+
+  /// Gets the vehicle entry OTP for a match (for driver to see what passenger should share)
+  Future<String?> getVehicleEntryOTP(String matchId) async {
+    try {
+      final matchDoc = await _db.collection('ride_matches').doc(matchId).get();
+      if (!matchDoc.exists) return null;
+      return matchDoc.data()?['vehicleEntryOTP'] as String?;
+    } catch (e) {
+      return null;
+    }
+  }
 
   // --- RIDE OFFERS ---
 
@@ -321,5 +389,115 @@ class RideMatchingService {
       print('Error restoring available seats: $e');
       rethrow;
     }
+  }
+
+  // --- KNN-BASED RECOMMENDATIONS ---
+
+  /// Finds similar rides using KNN algorithm
+  /// 
+  /// [queryRide] The ride to find similar rides for
+  /// [allRides] List of all available rides to search from
+  /// 
+  /// Returns a list of similar rides sorted by similarity score (highest first)
+  List<RideSimilarityResult> findSimilarRides(
+    RideOffer queryRide,
+    List<RideOffer> allRides,
+  ) {
+    return _knnService.findSimilarRides(queryRide, allRides);
+  }
+
+  /// Gets recommended rides for a user using KNN
+  /// 
+  /// Fetches all active rides and returns the most similar ones to rides
+  /// the user has previously shown interest in
+  Future<List<RideOffer>> getRecommendedRides(String userId) async {
+    try {
+      print('[KNN] getRecommendedRides for user: ' + userId);
+      // Get ride offers (include docs without explicit status)
+      // We filter in-memory to keep 'active' and missing-status offers
+      final offersSnapshot = await _db
+          .collection('ride_offers')
+          .get();
+
+      final allRides = offersSnapshot.docs
+          .map((doc) => RideOffer.fromFirestore(doc))
+          .where((offer) => offer.status != 'inactive')
+          .toList();
+      print('[KNN] total eligible ride_offers: ' + allRides.length.toString());
+
+      if (allRides.isEmpty) return [];
+
+      // Get user's previous ride requests to understand their preferences
+      final userRequestsSnapshot = await _db
+          .collection('ride_requests')
+          .where('userId', isEqualTo: userId)
+          .limit(5)
+          .get();
+      print('[KNN] user ride_requests count: ' + userRequestsSnapshot.docs.length.toString());
+
+      if (userRequestsSnapshot.docs.isEmpty) {
+        // If user has no previous requests, return all rides
+        return allRides.take(10).toList();
+      }
+
+      // Get the ride offers the user previously requested
+      final List<RideOffer> userRides = [];
+      for (final requestDoc in userRequestsSnapshot.docs) {
+        final rideOfferId = requestDoc.data()['rideOfferId'] as String;
+        try {
+          final offerDoc = await _db.collection('ride_offers').doc(rideOfferId).get();
+          if (offerDoc.exists) {
+            userRides.add(RideOffer.fromFirestore(offerDoc));
+          }
+        } catch (e) {
+          print('Error fetching ride offer: $e');
+        }
+      }
+      print('[KNN] user referenced rides fetched: ' + userRides.length.toString());
+
+      if (userRides.isEmpty) {
+        return allRides.take(10).toList();
+      }
+
+      // Use the most recent user ride as the query
+      final queryRide = userRides.first;
+      print('[KNN] queryRide id: ' + queryRide.id);
+      
+      // Find similar rides using KNN
+      final similarRides = _knnService.findSimilarRides(queryRide, allRides);
+      print('[KNN] similarRides found: ' + similarRides.length.toString());
+      
+      // Return the ride offers from similarity results
+      final results = similarRides.map((result) => result.ride).toList();
+
+      // Fallback: if no neighbors (e.g., only 1 ride available which equals query),
+      // return a few other rides so the section isn't empty.
+      if (results.isEmpty) {
+        final fallback = allRides
+            .where((r) => r.id != queryRide.id)
+            .take(5)
+            .toList();
+        print('[KNN] using fallback recommendations count: ' + fallback.length.toString());
+        return fallback;
+      }
+
+      return results;
+    } catch (e) {
+      print('Error getting recommended rides: $e');
+      return [];
+    }
+  }
+
+  /// Updates KNN feature weights for personalized recommendations
+  void updateKnnWeights(Map<String, double> weights) {
+    weights.forEach((feature, weight) {
+      _knnService.updateFeatureWeight(feature, weight);
+    });
+    _knnService.normalizeWeights();
+  }
+
+  /// Gets similarity breakdown between two rides
+  Map<String, double> getSimilarityBreakdown(RideOffer ride1, RideOffer ride2) {
+    return _knnService.getSimilarityBreakdown(ride1, ride2);
   }
 }

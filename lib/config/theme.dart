@@ -1,13 +1,42 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // --- Light Theme Colors ---
+  // --- Modern Professional Theme Colors ---
+  // Primary: Dark Navy Blue
+  static const Color primaryNavy = Color(0xFF1E3A5F);
+  static const Color primaryNavyLight = Color(0xFF2C4F7C);
+  static const Color primaryNavyDark = Color(0xFF152A47);
+
+  // Accent: Vibrant Orange
+  static const Color accentOrange = Color(0xFFFF6B35);
+  static const Color accentOrangeLight = Color(0xFFFF8C42);
+  static const Color accentPurple = Color(0xFF6C5CE7);
+  static const Color accentBlue = Color(0xFF4A90E2);
+
+  // Background Colors
+  static const Color lightBackground = Color(0xFFF5F7FA);
+  static const Color lightBackgroundAlt = Color(0xFFE8ECF1);
+  static const Color cardBackground = Colors.white;
+  static const Color cardShadow = Color(0x0D000000);
+
+  // Text Colors
+  static const Color lightTextPrimary = Color(0xFF1A1A1A);
+  static const Color lightTextSecondary = Color(0xFF4A5568);
+  static const Color lightTextTertiary = Color(0xFF718096);
+
+  // Dark Theme Colors
+  static const Color darkBackground = Color(0xFF0F1419);
+  static const Color darkCardBackground = Color(0xFF1A1F2E);
+  static const Color darkTextPrimary = Colors.white;
+  static const Color darkTextSecondary = Color(0xFFA0AEC0);
+
+  // --- Light Theme Colors (Legacy) ---
   static final Color lightPrimaryColor = Colors.deepPurple.shade600;
   static const Color lightBackgroundColor = Colors.transparent;
   static const Color lightTextColor = Color(0xFF333333);
   static const Color lightSubtleTextColor = Color(0xFF757575);
 
-  // --- Dark Theme Colors ---
+  // --- Dark Theme Colors (Legacy) ---
   static final Color darkPrimaryColor = Colors.deepPurple.shade300;
   static const Color darkBackgroundColor = Colors.transparent;
   static const Color darkTextColor = Colors.white;

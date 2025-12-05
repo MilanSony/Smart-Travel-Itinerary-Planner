@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/itinerary_model.dart';
 import '../services/pdf_service.dart';
+import '../services/itinerary_service.dart';
+import '../widgets/image_background.dart';
+import 'hotel_transport_suggestions_screen.dart';
 
 class ItineraryScreen extends StatelessWidget {
   final Itinerary itinerary;
@@ -13,43 +16,70 @@ class ItineraryScreen extends StatelessWidget {
     return DefaultTabController(
       length: itinerary.dayPlans.length,
       child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: Colors.transparent,
+
         appBar: AppBar(
-          title: Text(itinerary.title),
+          backgroundColor: const Color(0xFF6C5CE7),
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          title: Text(
+            itinerary.title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.download),
+              icon: const Icon(Icons.hotel, color: Colors.white),
+              onPressed: () => _showHotelTransportSuggestions(context),
+              tooltip: 'Hotels & Transport',
+            ),
+            IconButton(
+              icon: const Icon(Icons.download, color: Colors.white),
               onPressed: () => _exportToPdf(context),
               tooltip: 'Download PDF',
             ),
           ],
           bottom: TabBar(
             isScrollable: true,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
             tabs: itinerary.dayPlans.map((plan) => Tab(text: plan.dayTitle)).toList(),
           ),
         ),
         body: Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.deepPurple.shade50, Colors.blue.shade50],
+              colors: [
+                Color(0xFF6C5CE7), // Royal purple
+                Color(0xFFA29BFE), // Lavender
+                Color(0xFF74B9FF), // Sky blue
+              ],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
           ),
-          child: Column(
+          child: SafeArea(
+            child: Column(
             children: [
               // Summary and cost information
               if (itinerary.summary != null || itinerary.totalEstimatedCost != null)
                 Container(
-                  margin: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                    boxShadow: const [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        color: Color(0x14000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 4),
                       ),
                     ],
                   ),
@@ -60,15 +90,16 @@ class ItineraryScreen extends StatelessWidget {
                         Text(
                           'Trip Summary',
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.primaryColor,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF111827),
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           itinerary.summary!,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.black87,
+                            color: const Color(0xFF374151),
+                            height: 1.4,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -81,32 +112,31 @@ class ItineraryScreen extends StatelessWidget {
                             Text(
                               'Estimated Total Cost: ₹${itinerary.totalEstimatedCost!.toStringAsFixed(0)}',
                               style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w700,
                                 color: theme.primaryColor,
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 16),
-                        // Day-wise budget breakdown
                         Text(
                           'Day-wise Budget Breakdown',
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.primaryColor,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF111827),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         ...itinerary.dayPlans.asMap().entries.map((entry) {
                           final index = entry.key;
                           final dayPlan = entry.value;
                           return Container(
                             margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
-                              color: Colors.grey[50],
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey[300]!),
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFE5E7EB)),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -114,13 +144,14 @@ class ItineraryScreen extends StatelessWidget {
                                 Text(
                                   'Day ${index + 1}',
                                   style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1F2937),
                                   ),
                                 ),
                                 Text(
                                   '₹${dayPlan.totalEstimatedCost?.toStringAsFixed(0) ?? '0'}',
                                   style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w700,
                                     color: theme.primaryColor,
                                   ),
                                 ),
@@ -149,6 +180,7 @@ class ItineraryScreen extends StatelessWidget {
               ),
             ],
           ),
+          ),
         ),
       ),
     );
@@ -164,12 +196,12 @@ class ItineraryScreen extends StatelessWidget {
           Column(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.2),
+                  color: theme.primaryColor.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(activity.icon, color: theme.primaryColor, size: 24),
+                child: Icon(activity.icon, color: theme.primaryColor, size: 22),
               ),
               // The vertical line, but not for the last item
               if (index < total - 1)
@@ -187,9 +219,10 @@ class ItineraryScreen extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(bottom: 20.0),
               child: Card(
+                color: Colors.white,
                 margin: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Color(0xFFE5E7EB))),
+                elevation: 2,
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -199,21 +232,27 @@ class ItineraryScreen extends StatelessWidget {
                       Text(
                         activity.time,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w700,
                           color: theme.primaryColor,
                         ),
                       ),
-                      const Divider(height: 20),
+                      const SizedBox(height: 10),
                       // Title
                       Text(
                         activity.title,
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF111827),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       // Detailed Description
                       Text(
                         activity.description,
-                        style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black54),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF4B5563),
+                          height: 1.4,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       // Additional Information
@@ -230,7 +269,7 @@ class ItineraryScreen extends StatelessWidget {
                             Flexible(
                               child: Text(
                                 activity.estimatedDuration!,
-                                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -242,7 +281,7 @@ class ItineraryScreen extends StatelessWidget {
                             Flexible(
                               child: Text(
                                 activity.cost!,
-                                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -264,9 +303,9 @@ class ItineraryScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[200]!),
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,6 +375,25 @@ class ItineraryScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showHotelTransportSuggestions(BuildContext context) async {
+    // Get destination coordinates
+    final itineraryService = ItineraryService();
+    final coords = await itineraryService.getDestinationCoordinates(itinerary.destination);
+    
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HotelTransportSuggestionsScreen(
+            destination: itinerary.destination,
+            destinationLat: coords?['lat'],
+            destinationLon: coords?['lon'],
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _exportToPdf(BuildContext context) async {

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/ride_model.dart';
 import '../services/ride_matching_service.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/image_background.dart';
 import '../config/theme.dart';
 
 class FindRidesScreen extends StatefulWidget {
@@ -67,7 +67,9 @@ class _FindRidesScreenState extends State<FindRidesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: GradientBackground(
+      body: ImageBackground(
+        imagePath: 'assets/backgrounds/find_rides_bg.jpg',
+        overlayOpacity: 0.3,
         child: Column(
           children: [
             Container(

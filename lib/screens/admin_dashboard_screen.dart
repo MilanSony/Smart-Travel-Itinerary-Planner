@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../widgets/travel_theme_background.dart';
 import 'manage_users_screen.dart';
 import 'manage_trips_screen.dart'; // Import new screens
 import 'view_analytics_screen.dart';
@@ -24,15 +25,8 @@ class AdminDashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Container(
-        // Use a subtle gradient for a more professional look
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [theme.primaryColor.withOpacity(0.05), Colors.transparent],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
+      body: TravelThemeBackground(
+        theme: TravelTheme.adminDashboard,
         child: GridView.count(
           crossAxisCount: 2,
           padding: const EdgeInsets.all(24.0),

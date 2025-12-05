@@ -210,6 +210,24 @@ class ItineraryService {
     }
   }
 
+  /// Public method to get destination coordinates
+  Future<Map<String, double>?> getDestinationCoordinates(String destination) async {
+    try {
+      final geocodeData = await _geocodeDestination(destination);
+      if (geocodeData == null) return null;
+      
+      final lat = double.tryParse(geocodeData['lat']?.toString() ?? '');
+      final lon = double.tryParse(geocodeData['lon']?.toString() ?? '');
+      
+      if (lat == null || lon == null) return null;
+      
+      return {'lat': lat, 'lon': lon};
+    } catch (e) {
+      print('Error getting coordinates: $e');
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>?> _geocodeDestination(String destination) async {
     try {
       final geocodeUrl = Uri.parse(

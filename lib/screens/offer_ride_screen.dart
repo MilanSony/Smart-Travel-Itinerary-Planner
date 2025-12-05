@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/ride_matching_service.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/travel_theme_background.dart';
 
 // Comprehensive list of valid places in India
 const List<String> validPlaces = [
@@ -252,8 +252,11 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GradientBackground(
-      child: SingleChildScrollView(
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: TravelThemeBackground(
+        theme: TravelTheme.offerRide,
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
@@ -487,6 +490,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
           ),
         ),
       ),
+        ),
     );
   }
 }

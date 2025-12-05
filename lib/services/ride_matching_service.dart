@@ -76,6 +76,34 @@ class RideMatchingService {
 
   // --- RIDE OFFERS ---
 
+  /// Helper method to check if a ride offer's pickup date/time has passed
+  bool _isRideOfferExpired(RideOffer offer) {
+    try {
+      // Parse pickup time (format: "HH:mm")
+      final timeParts = offer.pickupTime.split(':');
+      if (timeParts.length != 2) return true;
+      
+      final hour = int.tryParse(timeParts[0]);
+      final minute = int.tryParse(timeParts[1]);
+      if (hour == null || minute == null) return true;
+      
+      // Combine pickup date and time
+      final pickupDateTime = DateTime(
+        offer.pickupDate.year,
+        offer.pickupDate.month,
+        offer.pickupDate.day,
+        hour,
+        minute,
+      );
+      
+      // Check if pickup date/time has passed
+      return pickupDateTime.isBefore(DateTime.now());
+    } catch (e) {
+      print('Error checking if ride offer is expired: $e');
+      return true; // If error, consider it expired to be safe
+    }
+  }
+
   /// Creates a new ride offer
   Future<String> createRideOffer({
     required String destination,
@@ -117,7 +145,7 @@ class RideMatchingService {
     return docRef.id;
   }
 
-  /// Gets all active ride offers
+  /// Gets all active ride offers (only upcoming rides)
   Stream<List<RideOffer>> getActiveRideOffers() {
     return _db
         .collection('ride_offers')
@@ -126,6 +154,7 @@ class RideMatchingService {
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => RideOffer.fromFirestore(doc))
+            .where((offer) => !_isRideOfferExpired(offer))
             .toList());
   }
 
@@ -250,28 +279,82 @@ class RideMatchingService {
     return docRef.id;
   }
 
-  /// Gets ride matches for a specific user
-  Stream<List<RideMatch>> getUserRideMatches(String userId) {
-    return _db
+  /// Gets ride matches for a specific user (only upcoming rides)
+  Stream<List<RideMatch>> getUserRideMatches(String userId) async* {
+    yield* _db
         .collection('ride_matches')
         .where('driverUserId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => RideMatch.fromFirestore(doc))
-            .toList());
+        .asyncMap((snapshot) async {
+          final matches = snapshot.docs
+              .map((doc) => RideMatch.fromFirestore(doc))
+              .toList();
+          
+          // Filter out matches where the associated ride offer has expired
+          final validMatches = <RideMatch>[];
+          for (final match in matches) {
+            try {
+              final offerDoc = await _db.collection('ride_offers').doc(match.rideOfferId).get();
+              if (offerDoc.exists) {
+                final offer = RideOffer.fromFirestore(offerDoc);
+                // Only include matches where the ride offer hasn't expired
+                // OR matches that are already completed (keep completed matches for history)
+                if (!_isRideOfferExpired(offer) || match.status == 'completed') {
+                  validMatches.add(match);
+                }
+              } else {
+                // If ride offer doesn't exist, keep the match (might be deleted offer)
+                validMatches.add(match);
+              }
+            } catch (e) {
+              print('Error checking ride offer for match ${match.id}: $e');
+              // On error, keep the match to be safe
+              validMatches.add(match);
+            }
+          }
+          
+          return validMatches;
+        });
   }
 
-  /// Gets passenger ride matches
-  Stream<List<RideMatch>> getPassengerRideMatches(String userId) {
-    return _db
+  /// Gets passenger ride matches (only upcoming rides)
+  Stream<List<RideMatch>> getPassengerRideMatches(String userId) async* {
+    yield* _db
         .collection('ride_matches')
         .where('passengerUserId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => RideMatch.fromFirestore(doc))
-            .toList());
+        .asyncMap((snapshot) async {
+          final matches = snapshot.docs
+              .map((doc) => RideMatch.fromFirestore(doc))
+              .toList();
+          
+          // Filter out matches where the associated ride offer has expired
+          final validMatches = <RideMatch>[];
+          for (final match in matches) {
+            try {
+              final offerDoc = await _db.collection('ride_offers').doc(match.rideOfferId).get();
+              if (offerDoc.exists) {
+                final offer = RideOffer.fromFirestore(offerDoc);
+                // Only include matches where the ride offer hasn't expired
+                // OR matches that are already completed (keep completed matches for history)
+                if (!_isRideOfferExpired(offer) || match.status == 'completed') {
+                  validMatches.add(match);
+                }
+              } else {
+                // If ride offer doesn't exist, keep the match (might be deleted offer)
+                validMatches.add(match);
+              }
+            } catch (e) {
+              print('Error checking ride offer for match ${match.id}: $e');
+              // On error, keep the match to be safe
+              validMatches.add(match);
+            }
+          }
+          
+          return validMatches;
+        });
   }
 
   /// Updates a ride match status

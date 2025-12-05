@@ -5,7 +5,7 @@ import '../models/itinerary_model.dart';
 import '../services/itinerary_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firestore_service.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/travel_theme_background.dart';
 import 'itinerary_screen.dart';
 import 'offer_ride_screen.dart' show validPlaces;
 
@@ -312,7 +312,8 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: GradientBackground(
+      body: TravelThemeBackground(
+        theme: TravelTheme.planTrip,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(

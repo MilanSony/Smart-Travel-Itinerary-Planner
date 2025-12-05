@@ -5,6 +5,7 @@ import 'package:trip_genie/screens/auth_gate.dart';
 import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../widgets/travel_theme_background.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -232,7 +233,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
-      body: SingleChildScrollView(
+      body: TravelThemeBackground(
+        theme: TravelTheme.profile,
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,6 +316,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ],
         ),
       ),
+        ),
     );
   }
 

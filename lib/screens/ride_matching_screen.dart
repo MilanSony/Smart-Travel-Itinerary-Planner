@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/ride_model.dart';
 import '../services/ride_matching_service.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/travel_theme_background.dart';
 import 'offer_ride_screen.dart';
 import 'find_rides_screen.dart';
 import 'my_matches_screen.dart';
@@ -44,7 +44,8 @@ class _RideMatchingScreenState extends State<RideMatchingScreen>
           ],
         ),
       ),
-      body: GradientBackground(
+      body: TravelThemeBackground(
+        theme: TravelTheme.rideMatching,
         child: TabBarView(
           controller: _tabController,
           children: const [

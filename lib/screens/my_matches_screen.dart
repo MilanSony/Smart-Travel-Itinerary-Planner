@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/ride_model.dart';
 import '../services/ride_matching_service.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/travel_theme_background.dart';
 import 'offer_ride_screen.dart' show validPlaces;
 
 class MyMatchesScreen extends StatefulWidget {
@@ -25,7 +25,8 @@ class _MyMatchesScreenState extends State<MyMatchesScreen> {
       );
     }
 
-    return GradientBackground(
+    return TravelThemeBackground(
+      theme: TravelTheme.myMatches,
       child: StreamBuilder<List<RideMatch>>(
         stream: _rideService.getUserRideMatches(user.uid),
         builder: (context, snapshot) {

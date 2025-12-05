@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/travel_theme_background.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
@@ -12,7 +12,8 @@ class NotificationsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Notifications'),
       ),
-      body: GradientBackground(
+      body: TravelThemeBackground(
+        theme: TravelTheme.notifications,
         child: notifications.isEmpty
             ? Center(
           child: Column(
@@ -51,7 +52,7 @@ class NotificationsScreen extends StatelessWidget {
             );
           },
         ),
-      ),
+        ),
     );
   }
 }

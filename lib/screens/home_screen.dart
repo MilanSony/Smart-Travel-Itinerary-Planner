@@ -6,6 +6,8 @@ import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_bar_logo.dart';
 import '../widgets/gradient_background.dart';
+import '../widgets/image_background.dart';
+import '../services/trip_knn_service.dart';
 import 'auth_gate.dart'; // <-- Import the AuthGate for navigation
 import 'notifications_screen.dart';
 import 'plan_trip_screen.dart';
@@ -223,13 +225,13 @@ class DashboardPage extends StatelessWidget {
           ),
         ),
         SafeArea(
-          child: Center(
+      child: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
+        child: Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
+          children: [
+            Text(
                     'Welcome, $userName!',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineMedium?.copyWith(
@@ -258,38 +260,40 @@ class DashboardPage extends StatelessWidget {
                         ),
                   ),
                   const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const PlanTripScreen()),
-                      );
-                    },
-                    icon: const Icon(Icons.add_circle_outline_rounded),
-                    label: const Text('Plan a New Trip'),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const PlanTripScreen()),
+                );
+              },
+                    icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+              label: const Text('Plan a New Trip'),
                     style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
+                      minimumSize: const Size(double.infinity, 24),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       backgroundColor: const Color(0xFF4C74E0),
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                       elevation: 4,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
-                      );
-                    },
-                    icon: const Icon(Icons.directions_car_rounded),
+                  const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
+                );
+              },
+                    icon: const Icon(Icons.directions_car_rounded, size: 18),
                     label: const Text('Find or Offer Rides'),
                     style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
+                      minimumSize: const Size(double.infinity, 24),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       backgroundColor: const Color(0xFF26A69A),
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                       elevation: 4,
                     ),
                   ),
@@ -628,7 +632,7 @@ class MyTripsPage extends StatelessWidget {
     if (user == null) {
       return GradientBackground(
         child: const SafeArea(
-          child: Center(child: Text('Please sign in to view your trips.')),
+        child: Center(child: Text('Please sign in to view your trips.')),
         ),
       );
     }
@@ -639,100 +643,168 @@ class MyTripsPage extends StatelessWidget {
         .orderBy('createdAt', descending: true)
         .snapshots();
 
-    return GradientBackground(
+    return ImageBackground(
+      imagePath: 'assets/backgrounds/my_trips_bg.jpg',
+      overlayOpacity: 0.3,
       child: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: tripsStream,
-          builder: (context, snapshot) {
-            print('My Trips - User ID: ${user.uid}');
-            print('My Trips - Connection state: ${snapshot.connectionState}');
-            print('My Trips - Has error: ${snapshot.hasError}');
-            print('My Trips - Error: ${snapshot.error}');
-            print('My Trips - Data: ${snapshot.data}');
-
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              print('My Trips - Error details: ${snapshot.error}');
-              return Center(child: Text('Failed to load trips: ${snapshot.error}'));
-            }
-            final docs = snapshot.data?.docs ?? [];
-            print('My Trips - Number of docs: ${docs.length}');
-
-            if (docs.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('No trips yet'),
-                    const SizedBox(height: 12),
-                    Text('User ID: ${user.uid}', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (context) => const PlanTripScreen()),
-                        );
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text('Plan a New Trip'),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: docs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final data = docs[index].data() as Map<String, dynamic>;
-                final destination = data['destination'] as String? ?? 'Unknown';
-                final title = data['title'] as String? ?? 'Trip';
-                final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
-                final duration = data['durationInDays'];
-                final interests = (data['interests'] as List?)?.cast<String>() ?? const [];
-                final summary = data['summary'] as Map<String, dynamic>?;
-                final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? const [];
-                final totalEstimatedCost = summary?['totalEstimatedCost'];
-
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.card_travel_outlined),
-                    title: Text(title),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(destination),
-                        if (duration != null) Text('Duration: $duration days'),
-                        if (interests.isNotEmpty) Text('Interests: ${interests.join(', ')}'),
-                        if (previewActivities.isNotEmpty) Text('Highlights: ${previewActivities.join(' · ')}'),
-                        if (totalEstimatedCost != null) Text('Est. cost: ₹$totalEstimatedCost'),
-                        if (createdAt != null) Text('Created: ${createdAt.toLocal()}'),
-                      ],
-                    ),
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: Text(title),
-                          content: Text('Destination: $destination'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Close'),
-                            )
-                          ],
-                        ),
+      child: StreamBuilder<QuerySnapshot>(
+        stream: tripsStream,
+        builder: (context, snapshot) {
+          print('My Trips - User ID: ${user.uid}');
+          print('My Trips - Connection state: ${snapshot.connectionState}');
+          print('My Trips - Has error: ${snapshot.hasError}');
+          print('My Trips - Error: ${snapshot.error}');
+          print('My Trips - Data: ${snapshot.data}');
+          
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            print('My Trips - Error details: ${snapshot.error}');
+            return Center(child: Text('Failed to load trips: ${snapshot.error}'));
+          }
+          final docs = snapshot.data?.docs ?? [];
+          print('My Trips - Number of docs: ${docs.length}');
+          
+          if (docs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('No trips yet'),
+                  const SizedBox(height: 12),
+                  Text('User ID: ${user.uid}', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const PlanTripScreen()),
                       );
                     },
+                    icon: const Icon(Icons.add),
+                    label: const Text('Plan a New Trip'),
                   ),
-                );
-              },
+                ],
+              ),
             );
-          },
+          }
+
+            // Build TripLite list and compute KNN recommendations
+            List<TripSimilarityResult> tripRecommendations = [];
+            try {
+              final tripsLite = docs.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return TripLite(
+                  id: data['id'] as String? ?? doc.id,
+                  destination: (data['destination'] as String?)?.trim() ?? 'Unknown',
+                  durationInDays: data['durationInDays'] as int?,
+                  interests: ((data['interests'] as List?)?.cast<String>()) ?? const [],
+                  budget: data['budget'] as String?,
+                  createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+                );
+              }).toList();
+
+              if (tripsLite.isNotEmpty) {
+                tripsLite.sort((a, b) =>
+                    (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+                final queryTrip = tripsLite.first;
+                tripRecommendations = TripKnnService(k: 3).findSimilarTrips(queryTrip, tripsLite);
+              }
+            } catch (_) {
+              tripRecommendations = [];
+            }
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(12),
+              itemCount: docs.length + (tripRecommendations.isNotEmpty ? 1 : 0),
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+                if (tripRecommendations.isNotEmpty && index == 0) {
+                  return Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: const [
+                              Icon(Icons.auto_awesome, color: Colors.amber),
+                              SizedBox(width: 8),
+                              Text(
+                                'Similar to your last trip (KNN)',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          ...tripRecommendations.map(
+                            (result) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.map_outlined),
+                              title: Text(result.trip.destination),
+                              subtitle: Text(
+                                'Match: ${result.similarityPercent} • '
+                                'Interests: ${result.trip.interests.isEmpty ? 'N/A' : result.trip.interests.join(', ')}',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final adjustedIndex = tripRecommendations.isNotEmpty ? index - 1 : index;
+                final data = docs[adjustedIndex].data() as Map<String, dynamic>;
+              final destination = data['destination'] as String? ?? 'Unknown';
+              final title = data['title'] as String? ?? 'Trip';
+              final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+              final duration = data['durationInDays'];
+              final interests = (data['interests'] as List?)?.cast<String>() ?? const [];
+              final summary = data['summary'] as Map<String, dynamic>?;
+              final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? const [];
+              final totalEstimatedCost = summary?['totalEstimatedCost'];
+
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.card_travel_outlined),
+                  title: Text(title),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(destination),
+                      if (duration != null) Text('Duration: $duration days'),
+                      if (interests.isNotEmpty) Text('Interests: ${interests.join(', ')}'),
+                      if (previewActivities.isNotEmpty) Text('Highlights: ${previewActivities.join(' · ')}'),
+                      if (totalEstimatedCost != null) Text('Est. cost: ₹$totalEstimatedCost'),
+                      if (createdAt != null) Text('Created: ${createdAt.toLocal()}'),
+                    ],
+                  ),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: Text(title),
+                        content: Text('Destination: $destination'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Close'),
+                          )
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          );
+        },
         ),
       ),
     );

@@ -9,6 +9,7 @@ const List<String> validPlaces = [
   'Thiruvananthapuram', 'Kochi', 'Ernakulam', 'Kollam', 'Thrissur', 'Kozhikode', 'Palakkad',
   'Malappuram', 'Kannur', 'Alappuzha', 'Kottayam', 'Idukki', 'Kasaragod', 'Pathanamthitta', 'Wayanad',
   'Aluva', 'Paravur', 'Arakunnam', 'Vaikom', 'Karunagappally', 'Kayamkulam', 'Chengannur', 'Changanassery',
+  'Munnar', 'Thekkady', 'Alleppey', 'Kumarakom', 'Varkala', 'Bekal', 'Athirappilly', 'Marari',
   'Thiruvananthapuram Central', 'Kochi Central', 'Ernakulam Junction', 'Kollam Junction', 
   'Thrissur Railway Station', 'Kochi Airport', 'Thiruvananthapuram Airport',
   
@@ -26,10 +27,31 @@ const List<String> validPlaces = [
   'Nanded', 'Kolhapur', 'Mumbai Central', 'Pune Railway Station', 'Mumbai Airport', 'Pune Airport',
   
   // Goa
-  'Panaji', 'Margao', 'Vasco', 'Mapusa', 'Goa',
+  'Panaji', 'Margao', 'Vasco', 'Mapusa', 'Goa', 'Calangute', 'Baga', 'Anjuna', 'Vagator', 'Palolem',
   
   // Delhi
   'Delhi', 'New Delhi', 'New Delhi Railway Station', 'Delhi Airport',
+  
+  // Famous Hill Stations & Tourist Destinations
+  'Munnar', 'Ooty', 'Kodaikanal', 'Coorg', 'Wayanad', 'Lonavala', 'Khandala', 'Mahabaleshwar',
+  'Mussoorie', 'Nainital', 'Shimla', 'Manali', 'Dalhousie', 'Kasauli', 'Kullu', 'Spiti',
+  'Leh', 'Ladakh', 'Gulmarg', 'Pahalgam', 'Sonamarg', 'McLeod Ganj', 'Dharamshala',
+  
+  // Beach Destinations
+  'Gokarna', 'Varkala', 'Kovalam', 'Pondicherry', 'Diu', 'Daman', 'Andaman', 'Lakshadweep',
+  'Havelock', 'Neil Island', 'Port Blair',
+  
+  // Heritage & Cultural Destinations
+  'Hampi', 'Khajuraho', 'Ajanta', 'Ellora', 'Konark', 'Puri', 'Bhubaneswar', 'Mahabalipuram',
+  'Kanchipuram', 'Thanjavur', 'Madurai', 'Mysore', 'Udaipur', 'Jaisalmer', 'Jodhpur',
+  
+  // Adventure & Spiritual Destinations
+  'Rishikesh', 'Haridwar', 'Varanasi', 'Allahabad', 'Pushkar', 'Mount Abu', 'Tirupati',
+  'Shirdi', 'Amritsar', 'Vaishno Devi', 'Badrinath', 'Kedarnath',
+  
+  // Wildlife & Nature
+  'Corbett', 'Ranthambore', 'Bandhavgarh', 'Kanha', 'Periyar', 'Thekkady', 'Kumarakom',
+  'Alleppey', 'Bekal', 'Athirappilly',
   
   // Andhra Pradesh
   'Hyderabad', 'Vijayawada', 'Visakhapatnam', 'Guntur', 'Tirupati', 'Hyderabad Railway Station',

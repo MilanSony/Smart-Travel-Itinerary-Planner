@@ -4,6 +4,8 @@ import '../services/pdf_service.dart';
 import '../services/itinerary_service.dart';
 import '../widgets/image_background.dart';
 import 'hotel_transport_suggestions_screen.dart';
+import 'budget_estimator_screen.dart';
+import 'budget_estimator_screen.dart';
 
 class ItineraryScreen extends StatelessWidget {
   final Itinerary itinerary;
@@ -36,6 +38,11 @@ class ItineraryScreen extends StatelessWidget {
               icon: const Icon(Icons.hotel, color: Colors.white),
               onPressed: () => _showHotelTransportSuggestions(context),
               tooltip: 'Hotels & Transport',
+            ),
+            IconButton(
+              icon: const Icon(Icons.savings, color: Colors.white),
+              onPressed: () => _openBudgetEstimator(context),
+              tooltip: 'AI Budget Estimator',
             ),
             IconButton(
               icon: const Icon(Icons.download, color: Colors.white),
@@ -382,6 +389,17 @@ class ItineraryScreen extends StatelessWidget {
     final itineraryService = ItineraryService();
     final coords = await itineraryService.getDestinationCoordinates(itinerary.destination);
     
+    // Use dates from itinerary if available, otherwise calculate from duration
+    DateTime? startDate = itinerary.startDate;
+    DateTime? endDate = itinerary.endDate;
+    
+    if (startDate == null || endDate == null) {
+      // Calculate dates from itinerary duration (estimate start date as today, end date based on number of days)
+      final numberOfDays = itinerary.dayPlans.length;
+      startDate = DateTime.now();
+      endDate = startDate.add(Duration(days: numberOfDays));
+    }
+    
     if (context.mounted) {
       Navigator.push(
         context,
@@ -390,6 +408,8 @@ class ItineraryScreen extends StatelessWidget {
             destination: itinerary.destination,
             destinationLat: coords?['lat'],
             destinationLon: coords?['lon'],
+            startDate: startDate,
+            endDate: endDate,
           ),
         ),
       );
@@ -499,5 +519,22 @@ class ItineraryScreen extends StatelessWidget {
         );
       }
     }
+  }
+
+  void _openBudgetEstimator(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BudgetEstimatorScreen(
+          tripId: itinerary.title,
+          destination: itinerary.destination,
+          startDate: itinerary.startDate,
+          endDate: itinerary.endDate,
+          travelers: 2, // default fallback; planner can adjust
+          initialBudget: itinerary.totalEstimatedCost,
+          itinerary: itinerary,
+          budgetLevel: null,
+        ),
+      ),
+    );
   }
 }

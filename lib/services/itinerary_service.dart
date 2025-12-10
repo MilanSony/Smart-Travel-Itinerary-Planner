@@ -114,6 +114,8 @@ class ItineraryService {
     int travelers = 1,
     String? budget,
     String? transportation,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
     // Parse budget and categorize budget level
     double? budgetAmount;
@@ -132,7 +134,7 @@ class ItineraryService {
       final geocodeData = await _geocodeDestination(destination);
       if (geocodeData == null) {
         print('No geocoding data found, trying fallback...');
-        return _generateFallbackItinerary(destination, durationInDays, interests, travelers);
+        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
       }
 
       final displayName = geocodeData['display_name'];
@@ -146,7 +148,7 @@ class ItineraryService {
       final places = await _fetchPlaces(bboxString, interests);
       if (places.isEmpty) {
         print('No places found, trying fallback...');
-        return _generateFallbackItinerary(destination, durationInDays, interests, travelers);
+        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
       }
 
       // Step 3: Categorize and filter places
@@ -166,7 +168,7 @@ class ItineraryService {
 
       if (dayPlans.isEmpty) {
         print('No day plans generated, trying fallback...');
-        return _generateFallbackItinerary(destination, durationInDays, interests, travelers);
+        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
       }
 
       // Step 5: Calculate total cost
@@ -187,6 +189,8 @@ class ItineraryService {
         dayPlans: dayPlans,
         summary: _generateSummary(destination, durationInDays, interests),
         totalEstimatedCost: totalCost,
+        startDate: startDate,
+        endDate: endDate,
       );
 
     } catch (e) {
@@ -199,7 +203,7 @@ class ItineraryService {
           e.toString().contains('TimeoutException')) {
         print('Network error detected, trying fallback itinerary...');
         try {
-          return _generateFallbackItinerary(destination, durationInDays, interests, travelers);
+          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
         } catch (fallbackError) {
           print('Fallback also failed: $fallbackError');
           throw Exception('Network connection error. Please check your internet connection and try again.');
@@ -213,146 +217,350 @@ class ItineraryService {
   /// Public method to get destination coordinates
   Future<Map<String, double>?> getDestinationCoordinates(String destination) async {
     try {
+      // Try fallback first for faster response
+      final fallbackCoords = _getFallbackCoordinates(destination);
+      if (fallbackCoords != null) {
+        print('Using fallback coordinates for: $destination');
+        return fallbackCoords;
+      }
+      
       final geocodeData = await _geocodeDestination(destination);
-      if (geocodeData == null) return null;
+      if (geocodeData == null) {
+        // Try fallback as last resort
+        final fallback = _getFallbackCoordinates(destination);
+        return fallback;
+      }
       
-      final lat = double.tryParse(geocodeData['lat']?.toString() ?? '');
-      final lon = double.tryParse(geocodeData['lon']?.toString() ?? '');
+      final lat = geocodeData['lat'] is double 
+          ? geocodeData['lat'] as double
+          : double.tryParse(geocodeData['lat']?.toString() ?? '');
+      final lon = geocodeData['lon'] is double
+          ? geocodeData['lon'] as double
+          : double.tryParse(geocodeData['lon']?.toString() ?? '');
       
-      if (lat == null || lon == null) return null;
+      if (lat == null || lon == null) {
+        // Try fallback as last resort
+        final fallback = _getFallbackCoordinates(destination);
+        return fallback;
+      }
       
       return {'lat': lat, 'lon': lon};
     } catch (e) {
       print('Error getting coordinates: $e');
-      return null;
+      // Try fallback as last resort
+      final fallback = _getFallbackCoordinates(destination);
+      return fallback;
     }
   }
 
   Future<Map<String, dynamic>?> _geocodeDestination(String destination) async {
-    try {
-      final geocodeUrl = Uri.parse(
-        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(destination)}&format=json&limit=1&addressdetails=1&accept-language=en'
-      );
-      
-      print('Geocoding request for: $destination');
-      print('URL: $geocodeUrl');
-      
-      final response = await http.get(geocodeUrl, headers: {'User-Agent': _userAgent}).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('Geocoding timeout - please try again');
-        },
-      );
-
-      print('Geocoding response status: ${response.statusCode}');
-      
-      if (response.statusCode != 200) {
-        print('Geocoding failed with status: ${response.statusCode}');
-        print('Response body: ${response.body}');
-        throw Exception('Failed to geocode destination. Status: ${response.statusCode}');
-      }
-
-      final data = json.decode(response.body);
-      print('Geocoding data received: ${data.length} results');
-      
-      if (data.isEmpty) {
-        print('No geocoding results found for: $destination');
-        return null;
-      }
-
-      return data[0];
-    } catch (e) {
-      print('Geocoding error: $e');
-      rethrow; // Re-throw to get more specific error info
+    // Try fallback coordinates for common Indian cities first
+    final fallbackCoords = _getFallbackCoordinates(destination);
+    if (fallbackCoords != null) {
+      print('Using fallback coordinates for: $destination');
+      return {
+        'lat': fallbackCoords['lat'],
+        'lon': fallbackCoords['lon'],
+        'display_name': destination,
+        'boundingbox': [
+          fallbackCoords['lat']! - 0.1,
+          fallbackCoords['lat']! + 0.1,
+          fallbackCoords['lon']! - 0.1,
+          fallbackCoords['lon']! + 0.1,
+        ],
+      };
     }
+
+    // Retry logic: try up to 3 times with increasing timeout
+    int maxRetries = 3;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final geocodeUrl = Uri.parse(
+          'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(destination)}&format=json&limit=1&addressdetails=1&accept-language=en'
+        );
+        
+        print('Geocoding request for: $destination (Attempt $attempt/$maxRetries)');
+        print('URL: $geocodeUrl');
+        
+        // Increase timeout with each retry: 15s, 20s, 25s
+        final timeoutDuration = Duration(seconds: 15 + (attempt * 5));
+        
+        final response = await http.get(geocodeUrl, headers: {'User-Agent': _userAgent}).timeout(
+          timeoutDuration,
+          onTimeout: () {
+            throw Exception('Geocoding timeout after ${timeoutDuration.inSeconds}s');
+          },
+        );
+
+        print('Geocoding response status: ${response.statusCode}');
+        
+        if (response.statusCode != 200) {
+          print('Geocoding failed with status: ${response.statusCode}');
+          if (attempt < maxRetries) {
+            print('Retrying...');
+            await Future.delayed(Duration(seconds: attempt)); // Wait before retry
+            continue;
+          }
+          throw Exception('Failed to geocode destination. Status: ${response.statusCode}');
+        }
+
+        final data = json.decode(response.body);
+        print('Geocoding data received: ${data.length} results');
+        
+        if (data.isEmpty) {
+          print('No geocoding results found for: $destination');
+          return null;
+        }
+
+        return data[0];
+      } catch (e) {
+        print('Geocoding error (Attempt $attempt): $e');
+        if (attempt == maxRetries) {
+          // Last attempt failed, try fallback coordinates
+          print('All geocoding attempts failed, using fallback coordinates');
+          final fallback = _getFallbackCoordinates(destination);
+          if (fallback != null) {
+            return {
+              'lat': fallback['lat'],
+              'lon': fallback['lon'],
+              'display_name': destination,
+              'boundingbox': [
+                fallback['lat']! - 0.1,
+                fallback['lat']! + 0.1,
+                fallback['lon']! - 0.1,
+                fallback['lon']! + 0.1,
+              ],
+            };
+          }
+          rethrow;
+        }
+        // Wait before retrying
+        await Future.delayed(Duration(seconds: attempt));
+      }
+    }
+    return null;
+  }
+
+  /// Get fallback coordinates for common Indian destinations
+  Map<String, double>? _getFallbackCoordinates(String destination) {
+    final destLower = destination.toLowerCase().trim();
+    
+    // Common Indian cities with their coordinates
+    final cityCoords = {
+      'thiruvananthapuram': {'lat': 8.5244, 'lon': 76.9366},
+      'trivandrum': {'lat': 8.5244, 'lon': 76.9366},
+      'kochi': {'lat': 9.9312, 'lon': 76.2673},
+      'cochin': {'lat': 9.9312, 'lon': 76.2673},
+      'goa': {'lat': 15.2993, 'lon': 74.1240},
+      'mumbai': {'lat': 19.0760, 'lon': 72.8777},
+      'bombay': {'lat': 19.0760, 'lon': 72.8777},
+      'delhi': {'lat': 28.6139, 'lon': 77.2090},
+      'new delhi': {'lat': 28.6139, 'lon': 77.2090},
+      'bangalore': {'lat': 12.9716, 'lon': 77.5946},
+      'bengaluru': {'lat': 12.9716, 'lon': 77.5946},
+      'chennai': {'lat': 13.0827, 'lon': 80.2707},
+      'madras': {'lat': 13.0827, 'lon': 80.2707},
+      'hyderabad': {'lat': 17.3850, 'lon': 78.4867},
+      'kolkata': {'lat': 22.5726, 'lon': 88.3639},
+      'calcutta': {'lat': 22.5726, 'lon': 88.3639},
+      'pune': {'lat': 18.5204, 'lon': 73.8567},
+      'jaipur': {'lat': 26.9124, 'lon': 75.7873},
+      'udaipur': {'lat': 24.5854, 'lon': 73.7125},
+      'jodhpur': {'lat': 26.2389, 'lon': 73.0243},
+      'jaisalmer': {'lat': 26.9157, 'lon': 70.9083},
+      'manali': {'lat': 32.2432, 'lon': 77.1892},
+      'shimla': {'lat': 31.1048, 'lon': 77.1734},
+      'darjeeling': {'lat': 27.0360, 'lon': 88.2627},
+      'mysore': {'lat': 12.2958, 'lon': 76.6394},
+      'mysuru': {'lat': 12.2958, 'lon': 76.6394},
+      'munnar': {'lat': 10.0889, 'lon': 77.0595},
+      'ooty': {'lat': 11.4102, 'lon': 76.6950},
+      'udagamandalam': {'lat': 11.4102, 'lon': 76.6950},
+      'kodaikanal': {'lat': 10.2381, 'lon': 77.4892},
+      'coorg': {'lat': 12.3375, 'lon': 75.8069},
+      'kodagu': {'lat': 12.3375, 'lon': 75.8069},
+      'hampi': {'lat': 15.3350, 'lon': 76.4600},
+      'rishikesh': {'lat': 30.0869, 'lon': 78.2676},
+      'haridwar': {'lat': 29.9457, 'lon': 78.1642},
+      'varanasi': {'lat': 25.3176, 'lon': 82.9739},
+      'banaras': {'lat': 25.3176, 'lon': 82.9739},
+      'kashi': {'lat': 25.3176, 'lon': 82.9739},
+      'port blair': {'lat': 11.6234, 'lon': 92.7265},
+      'andaman': {'lat': 11.6234, 'lon': 92.7265},
+      'havelock': {'lat': 11.9689, 'lon': 93.0014},
+      'leh': {'lat': 34.1526, 'lon': 77.5771},
+      'ladakh': {'lat': 34.1526, 'lon': 77.5771},
+      'manali': {'lat': 32.2432, 'lon': 77.1892},
+      'shimla': {'lat': 31.1048, 'lon': 77.1734},
+      'darjeeling': {'lat': 27.0360, 'lon': 88.2627},
+      'mussoorie': {'lat': 30.4546, 'lon': 78.0798},
+      'nainital': {'lat': 29.3919, 'lon': 79.4542},
+      'khajuraho': {'lat': 24.8525, 'lon': 79.9333},
+      'gokarna': {'lat': 14.5500, 'lon': 74.3167},
+      'pondicherry': {'lat': 11.9416, 'lon': 79.8083},
+      'puducherry': {'lat': 11.9416, 'lon': 79.8083},
+      'puri': {'lat': 19.8135, 'lon': 85.8315},
+      'konark': {'lat': 19.8876, 'lon': 86.0945},
+      'wayanad': {'lat': 11.6854, 'lon': 76.1320},
+      'thekkady': {'lat': 9.6000, 'lon': 77.1667},
+      'periyar': {'lat': 9.6000, 'lon': 77.1667},
+      'alleppey': {'lat': 9.4981, 'lon': 76.3388},
+      'alappuzha': {'lat': 9.4981, 'lon': 76.3388},
+      'varkala': {'lat': 8.7375, 'lon': 76.7167},
+      'kovalam': {'lat': 8.4000, 'lon': 76.9781},
+      'thekkady': {'lat': 9.6000, 'lon': 77.1667},
+      'kumarakom': {'lat': 9.6167, 'lon': 76.4333},
+      'bekal': {'lat': 12.3894, 'lon': 75.0333},
+      'athirappilly': {'lat': 10.2833, 'lon': 76.5667},
+      'amritsar': {'lat': 31.6340, 'lon': 74.8723},
+      'varanasi': {'lat': 25.3176, 'lon': 82.9739},
+      'agra': {'lat': 27.1767, 'lon': 78.0081},
+      'rishikesh': {'lat': 30.0869, 'lon': 78.2676},
+      'haridwar': {'lat': 29.9457, 'lon': 78.1642},
+    };
+    
+    // Check exact match
+    if (cityCoords.containsKey(destLower)) {
+      return cityCoords[destLower];
+    }
+    
+    // Check partial match (e.g., "Thiruvananthapuram" contains "thiruvananthapuram")
+    for (final entry in cityCoords.entries) {
+      if (destLower.contains(entry.key) || entry.key.contains(destLower)) {
+        return entry.value;
+      }
+    }
+    
+    return null;
   }
 
   Future<List<PlaceDetails>> _fetchPlaces(String bbox, List<String> interests) async {
-    try {
-      // Optimized Overpass query - reduced complexity for better performance
-      final overpassQuery = r'''
-        [out:json][timeout:15];
-        (
-          // Tourism attractions (most important)
-          node["tourism"]["name"]($bbox);
-          way["tourism"]["name"]($bbox);
-          
-          // Natural attractions
-          node["natural"~"^(beach|waterfall|peak|hill)$"]["name"]($bbox);
-          way["natural"~"^(beach|waterfall|peak|hill)$"]["name"]($bbox);
-          
-          // Parks and gardens
-          node["leisure"~"^(park|garden)$"]["name"]($bbox);
-          way["leisure"~"^(park|garden)$"]["name"]($bbox);
-          
-          // Places of worship
-          node["amenity"="place_of_worship"]["name"]($bbox);
-          way["amenity"="place_of_worship"]["name"]($bbox);
-          
-          // Food & drink (limited to essential types)
-          node["amenity"~"^(restaurant|cafe|bar)$"]["name"]($bbox);
-          way["amenity"~"^(restaurant|cafe|bar)$"]["name"]($bbox);
-          
-          // Entertainment (limited)
-          node["amenity"~"^(cinema|theatre|arts_centre)$"]["name"]($bbox);
-          way["amenity"~"^(cinema|theatre|arts_centre)$"]["name"]($bbox);
+    // Retry logic: try up to 3 times with increasing timeout
+    int maxRetries = 3;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Enhanced Overpass query - fetch more famous attractions
+        // Use timeout:25 for first attempt, increase for retries
+        final queryTimeout = 25 + (attempt * 5); // 25s, 30s, 35s
+        final overpassQuery = '''
+          [out:json][timeout:$queryTimeout];
+          (
+            // Tourism attractions (most important - expanded)
+            node["tourism"]["name"](\$bbox);
+            way["tourism"]["name"](\$bbox);
+            relation["tourism"]["name"](\$bbox);
+            
+            // Specific famous attraction types
+            node["tourism"~"^(attraction|museum|gallery|zoo|theme_park|monument|memorial|artwork|viewpoint|information|aquarium)\$"]["name"](\$bbox);
+            way["tourism"~"^(attraction|museum|gallery|zoo|theme_park|monument|memorial|artwork|viewpoint|information|aquarium)\$"]["name"](\$bbox);
+            
+            // Natural attractions (expanded)
+            node["natural"~"^(beach|waterfall|peak|hill|cliff|cave|volcano|spring|geyser|bay|cape|island)\$"]["name"](\$bbox);
+            way["natural"~"^(beach|waterfall|peak|hill|cliff|cave|volcano|spring|geyser|bay|cape|island)\$"]["name"](\$bbox);
+            
+            // Historic sites and heritage
+            node["historic"]["name"](\$bbox);
+            way["historic"]["name"](\$bbox);
+            node["historic"~"^(castle|fort|palace|ruins|monument|memorial|tomb|archaeological_site|tower)\$"]["name"](\$bbox);
+            way["historic"~"^(castle|fort|palace|ruins|monument|memorial|tomb|archaeological_site|tower)\$"]["name"](\$bbox);
+            
+            // Parks and gardens (expanded)
+            node["leisure"~"^(park|garden|nature_reserve|beach_resort|marina|water_park)\$"]["name"](\$bbox);
+            way["leisure"~"^(park|garden|nature_reserve|beach_resort|marina|water_park)\$"]["name"](\$bbox);
+            
+            // Places of worship (famous temples, churches, mosques)
+            node["amenity"="place_of_worship"]["name"](\$bbox);
+            way["amenity"="place_of_worship"]["name"](\$bbox);
+            
+            // Man-made attractions
+            node["man_made"~"^(tower|bridge|lighthouse|observatory|monument|obelisk)\$"]["name"](\$bbox);
+            way["man_made"~"^(tower|bridge|lighthouse|observatory|monument|obelisk)\$"]["name"](\$bbox);
+            
+            // Water bodies and lakes
+            node["natural"="water"]["name"](\$bbox);
+            way["natural"="water"]["name"](\$bbox);
+            
+            // Food & drink (for meal planning)
+            node["amenity"~"^(restaurant|cafe|bar|fast_food)\$"]["name"](\$bbox);
+            way["amenity"~"^(restaurant|cafe|bar|fast_food)\$"]["name"](\$bbox);
+            
+            // Entertainment and culture
+            node["amenity"~"^(cinema|theatre|arts_centre|nightclub|casino)\$"]["name"](\$bbox);
+            way["amenity"~"^(cinema|theatre|arts_centre|nightclub|casino)\$"]["name"](\$bbox);
+          );
+          out center meta;
+        ''';
+
+        // Replace bbox placeholder
+        final finalQuery = overpassQuery.replaceAll(r'$bbox', bbox);
+        
+        print('Fetching places for bbox: $bbox (Attempt $attempt/$maxRetries, timeout: ${queryTimeout}s)');
+        
+        final overpassUrl = Uri.parse('https://overpass-api.de/api/interpreter');
+        
+        // HTTP timeout should be longer than query timeout
+        final httpTimeout = Duration(seconds: queryTimeout + 10);
+        
+        final response = await http.post(
+          overpassUrl, 
+          body: {'data': finalQuery},
+          headers: {'User-Agent': _userAgent}
+        ).timeout(
+          httpTimeout,
+          onTimeout: () {
+            throw Exception('Request timeout after ${httpTimeout.inSeconds}s');
+          },
         );
-        out center meta;
-      ''';
 
-      // Replace $bbox placeholder with actual bbox value
-      final finalQuery = overpassQuery.replaceAll(r'$bbox', bbox);
-      
-      print('Fetching places for bbox: $bbox');
-      
-      final overpassUrl = Uri.parse('https://overpass-api.de/api/interpreter');
-      final response = await http.post(
-        overpassUrl, 
-        body: {'data': finalQuery},
-        headers: {'User-Agent': _userAgent}
-      ).timeout(
-        const Duration(seconds: 20),
-        onTimeout: () {
-          throw Exception('Request timeout - please try again');
-        },
-      );
-
-      print('Overpass API response status: ${response.statusCode}');
-      
-      if (response.statusCode != 200) {
-        print('Overpass API failed with status: ${response.statusCode}');
-        print('Response body: ${response.body}');
-        throw Exception('Failed to fetch places from Overpass API. Status: ${response.statusCode}');
-      }
-
-      final data = json.decode(response.body);
-      final elements = data['elements'] as List;
-      
-      print('Overpass API returned ${elements.length} elements');
-
-      // Convert to PlaceDetails and filter
-      final places = elements
-          .map((element) => PlaceDetails.fromOsmElement(element))
-          .where((place) => place.name != 'Unnamed Place' && place.name.isNotEmpty)
-          .toList();
-
-      print('Filtered to ${places.length} valid places');
-
-      // Simplified duplicate removal for better performance
-      final uniquePlaces = <String, PlaceDetails>{};
-      for (final place in places) {
-        final key = _getPlaceKey(place);
-        if (!uniquePlaces.containsKey(key)) {
-          uniquePlaces[key] = place;
+        print('Overpass API response status: ${response.statusCode}');
+        
+        if (response.statusCode != 200) {
+          print('Overpass API failed with status: ${response.statusCode}');
+          if (attempt < maxRetries) {
+            print('Retrying...');
+            await Future.delayed(Duration(seconds: attempt * 2)); // Wait before retry
+            continue;
+          }
+          print('Response body: ${response.body}');
+          throw Exception('Failed to fetch places from Overpass API. Status: ${response.statusCode}');
         }
-      }
 
-      print('Final unique places: ${uniquePlaces.length}');
-      return uniquePlaces.values.toList();
-    } catch (e) {
-      print('Error fetching places: $e');
-      rethrow; // Re-throw to get more specific error info
+        final data = json.decode(response.body);
+        final elements = data['elements'] as List;
+        
+        print('Overpass API returned ${elements.length} elements');
+
+        // Convert to PlaceDetails and filter
+        final places = elements
+            .map((element) => PlaceDetails.fromOsmElement(element))
+            .where((place) => place.name != 'Unnamed Place' && place.name.isNotEmpty)
+            .toList();
+
+        print('Filtered to ${places.length} valid places');
+
+        // Simplified duplicate removal for better performance
+        final uniquePlaces = <String, PlaceDetails>{};
+        for (final place in places) {
+          final key = _getPlaceKey(place);
+          if (!uniquePlaces.containsKey(key)) {
+            uniquePlaces[key] = place;
+          }
+        }
+
+        print('Final unique places: ${uniquePlaces.length}');
+        return uniquePlaces.values.toList();
+      } catch (e) {
+        print('Error fetching places (Attempt $attempt): $e');
+        if (attempt == maxRetries) {
+          // Last attempt failed, return empty list to trigger fallback itinerary
+          print('All attempts failed, will use fallback itinerary');
+          return [];
+        }
+        // Wait before retrying with exponential backoff
+        await Future.delayed(Duration(seconds: attempt * 2));
+      }
     }
+    return []; // Return empty list to trigger fallback
   }
 
   Map<String, List<PlaceDetails>> _categorizePlaces(List<PlaceDetails> places) {
@@ -434,12 +642,20 @@ class ItineraryService {
         categorized['parks']!.add(place);
       }
 
-      // Natural sights and heritage – treat as attractions
-      final isBeach = natural == 'beach';
-      final isWaterfall = natural == 'waterfall' || (water == 'waterfall');
-      final isFort = (historic == 'ruins' || historic == 'castle' || manMade == 'fortification');
-      final isHeritage = heritage != null;
-      if (isBeach || isWaterfall || isFort || isHeritage) {
+      // Natural sights and heritage – treat as attractions (PRIORITIZE TOURIST ATTRACTIONS)
+      final isBeach = natural == 'beach' || place.name.toLowerCase().contains('beach');
+      final isWaterfall = natural == 'waterfall' || (water == 'waterfall') || place.name.toLowerCase().contains('waterfall') || place.name.toLowerCase().contains('falls');
+      final isViewpoint = place.tourismType == 'viewpoint' || place.name.toLowerCase().contains('viewpoint') || place.name.toLowerCase().contains('view point') || place.name.toLowerCase().contains('point');
+      final isPeak = natural == 'peak' || natural == 'hill' || place.name.toLowerCase().contains('peak') || place.name.toLowerCase().contains('hill');
+      final isLake = natural == 'lake' || natural == 'river' || place.name.toLowerCase().contains('lake');
+      final isFort = (historic == 'ruins' || historic == 'castle' || historic == 'fort' || manMade == 'fortification') || place.name.toLowerCase().contains('fort');
+      final isPalace = historic == 'palace' || place.name.toLowerCase().contains('palace');
+      final isHeritage = heritage != null || place.name.toLowerCase().contains('heritage');
+      final isCave = natural == 'cave' || place.name.toLowerCase().contains('cave');
+      final isValley = place.name.toLowerCase().contains('valley');
+      
+      // Add all tourist attractions to attractions category
+      if (isBeach || isWaterfall || isViewpoint || isPeak || isLake || isFort || isPalace || isHeritage || isCave || isValley) {
         categorized['attractions']!.add(place);
       }
     }
@@ -458,16 +674,27 @@ class ItineraryService {
   List<String> _getCuratedKeywords(String destination) {
     final key = destination.toLowerCase();
     
-    // Goa
-    if (key.contains('goa')) {
+    // Goa - Beach Paradise
+    if (key.contains('goa') || key.contains('panaji') || key.contains('panjim')) {
       return [
+        // Famous Beaches
         'baga beach', 'calangute beach', 'anjuna beach', 'candolim beach', 'palolem beach',
         'miramar beach', 'arambol beach', 'vagator beach', 'benaulim beach', 'colva beach',
+        'agonda beach', 'morjim beach', 'ashwem beach', 'sinquerim beach', 'betalbatim beach',
+        'varca beach', 'cavelossim beach', 'mobor beach', 'galgibaga beach', 'butterfly beach',
+        // Viewpoints & Scenic Spots
         'chapora fort', 'aguada fort', 'reis magos fort', 'terekhol fort', 'corjuem fort',
-        'dudhsagar falls', 'basilica of bom jesus', 'se cathedral', 'shri mangeshi temple',
-        'divar island', 'old goa', 'spice plantation', 'dona paula', 'butterfly beach',
-        'grand island', 'bondla wildlife sanctuary', 'mollem national park', 'anjuna flea market',
-        'mapusa market', 'panjim church', 'santa monica church', 'shri shantadurga temple',
+        'dona paula', 'dona paula viewpoint', 'cabo de rama fort', 'tito lane', 'anjuna viewpoint',
+        // Waterfalls & Nature
+        'dudhsagar falls', 'tambdi surla waterfall', 'harvalem falls', 'kuskem falls',
+        // Heritage & Culture
+        'basilica of bom jesus', 'se cathedral', 'shri mangeshi temple', 'shri shantadurga temple',
+        'old goa', 'divar island', 'chorao island', 'spice plantation', 'anjuna flea market',
+        'mapusa market', 'panjim church', 'santa monica church', 'margao market',
+        // Wildlife & Adventure
+        'bondla wildlife sanctuary', 'mollem national park', 'bhagwan mahavir wildlife sanctuary',
+        'grand island', 'scuba diving', 'dolphin watching', 'water sports', 'parasailing',
+        'jet skiing', 'banana boat ride', 'sunset cruise', 'casino cruise',
       ];
     }
     
@@ -491,6 +718,267 @@ class ItineraryService {
         'guruvayur temple', 'sabarimala', 'bekal fort', 'palakkad fort', 'kannur fort',
         'thalassery fort', 'st angelo fort', 'kappad beach', 'payyambalam beach',
         'silent valley national park', 'eravikulam national park', 'parambikulam wildlife sanctuary',
+      ];
+    }
+    
+    // Munnar - Famous hill station with tea gardens, viewpoints, waterfalls
+    if (key.contains('munnar')) {
+      return [
+        'tea museum', 'mattupetty dam', 'echo point', 'top station', 'kundala lake',
+        'attukal waterfalls', 'lakhom waterfalls', 'chinnar wildlife sanctuary',
+        'eravikulam national park', 'anaimudi peak', 'marayoor sandalwood forest',
+        'lockhart gap', 'photo point', 'blossom park', 'rose garden', 'tea gardens',
+        'pothamedu viewpoint', 'meesapulimala', 'kolukkumalai tea estate',
+        'chinnakanal waterfalls', 'power house waterfalls', 'lakkom waterfalls',
+        'mattupetty viewpoint', 'kundala dam', 'devikulam', 'munnar town',
+        'tata tea museum', 'lockhart tea estate', 'kanan devan hills',
+      ];
+    }
+    
+    // Ooty - Queen of Hill Stations
+    if (key.contains('ooty') || key.contains('udagamandalam')) {
+      return [
+        'ooty lake', 'botanical gardens', 'doddabetta peak', 'rose garden', 'tea factory',
+        'pykara falls', 'pykara lake', 'mudumalai national park', 'nilgiri mountain railway',
+        'catherine falls', 'kalhatti falls', 'emerald lake', 'avalanche lake', 'wax museum',
+        'toy train', 'government museum', 'st stephen church', 'tribal museum',
+        'ketti valley viewpoint', 'lamb rock', 'dolphin nose', 'needle rock',
+      ];
+    }
+    
+    // Kodaikanal - Princess of Hill Stations
+    if (key.contains('kodaikanal')) {
+      return [
+        'kodaikanal lake', 'coakers walk', 'pillar rocks', 'silver cascade falls',
+        'bear shola falls', 'dolphin nose', 'green valley viewpoint', 'kurinji andavar temple',
+        'bryant park', 'chettiar park', 'moir point', 'upper lake view', 'berijam lake',
+        'vattakanal', 'thousand pillar rock', 'poombarai village', 'guna cave',
+        'shenbaganur museum', 'christ the king church', 'la salette church',
+      ];
+    }
+    
+    // Coorg - Scotland of India
+    if (key.contains('coorg') || key.contains('kodagu')) {
+      return [
+        'abbey falls', 'raja seat', 'madhikeri fort', 'omkareshwara temple',
+        'talakaveri', 'nagarahole national park', 'dubare elephant camp', 'iruppu falls',
+        'golden temple', 'nalknad palace', 'tadiandamol peak', 'mandalpatti viewpoint',
+        'barapole river', 'chettalli coffee estate', 'coffee museum', 'cauvery nisargadhama',
+        'bhagamandala', 'triveni sangam', 'harangi dam', 'kushalnagar',
+      ];
+    }
+    
+    // Hampi - UNESCO World Heritage Site
+    if (key.contains('hampi')) {
+      return [
+        'virupaksha temple', 'vittala temple', 'hemakuta hill', 'hampi bazaar',
+        'lotus mahal', 'elephant stables', 'queen bath', 'hazara rama temple',
+        'krishna temple', 'achutaraya temple', 'zanana enclosure', 'royal enclosure',
+        'matanga hill', 'anjaneya hill', 'tungabhadra river', 'coracle ride',
+        'sugriva cave', 'sanapur lake', 'daroji bear sanctuary', 'badavilinga temple',
+      ];
+    }
+    
+    // Rishikesh - Yoga Capital & Adventure Hub
+    if (key.contains('rishikesh')) {
+      return [
+        'lakshman jhula', 'ram jhula', 'triveni ghat', 'geeta bhawan', 'swarg ashram',
+        'neelkanth mahadev temple', 'bharat mandir', 'trimbakeshwar temple', 'shivpuri',
+        'rafting point', 'beatles ashram', 'kunjapuri temple', 'patna waterfall',
+        'garud chatti waterfall', 'phool chatti waterfall', 'rajaji national park',
+        'vashishta cave', 'shivpuri river rafting', 'janki setu', 'ram jhula market',
+      ];
+    }
+    
+    // Haridwar - Gateway to Gods
+    if (key.contains('haridwar')) {
+      return [
+        'har ki pauri', 'maya devi temple', 'chandi devi temple', 'mansa devi temple',
+        'daksha mahadev temple', 'bharat mata mandir', 'shantikunj', 'pawan dham',
+        'ganga aarti', 'rajaji national park', 'chilla wildlife sanctuary',
+        'neel dhara pakshi vihar', 'sapt rishi ashram', 'vaishno devi temple',
+        'piran kaliyar', 'doodhadhari barfani temple', 'bara bazaar',
+      ];
+    }
+    
+    // Varanasi - Spiritual Capital
+    if (key.contains('varanasi') || key.contains('banaras') || key.contains('kashi')) {
+      return [
+        'kashi vishwanath temple', 'dashashwamedh ghat', 'assi ghat', 'manikarnika ghat',
+        'sarnath', 'dhamek stupa', 'ganga aarti', 'tulsi manas temple', 'sankat mochan temple',
+        'durga temple', 'bharat mata temple', 'ramnagar fort', 'banaras hindu university',
+        'jala temple', 'new vishwanath temple', 'chunar fort', 'rajghat',
+        'boat ride ganges', 'evening aarti', 'sarnath museum', 'deer park',
+      ];
+    }
+    
+    // Andaman - Tropical Paradise
+    if (key.contains('andaman') || key.contains('port blair') || key.contains('havelock')) {
+      return [
+        'cellular jail', 'radhanagar beach', 'elephant beach', 'kalapathar beach',
+        'ross island', 'north bay island', 'jolly buoy island', 'red skin island',
+        'chidiya tapu', 'wandoor beach', 'corbyns cove', 'baratang island',
+        'limestone caves', 'mud volcano', 'maharashtra beach', 'vijaynagar beach',
+        'mount harriet', 'chatham saw mill', 'samudrika museum', 'anthropological museum',
+      ];
+    }
+    
+    // Leh-Ladakh - Land of High Passes
+    if (key.contains('leh') || key.contains('ladakh')) {
+      return [
+        'pangong lake', 'nubra valley', 'khardung la', 'magnetic hill', 'gurudwara pathar sahib',
+        'leh palace', 'shanti stupa', 'hemis monastery', 'thiksey monastery', 'diskit monastery',
+        'alchi monastery', 'lamayuru monastery', 'tso moriri', 'tso kar', 'zanskar valley',
+        'kargil', 'drass', 'suru valley', 'bactrian camel ride', 'confluence of indus and zanskar',
+      ];
+    }
+    
+    // Manali - Valley of Gods
+    if (key.contains('manali')) {
+      return [
+        'rohtang pass', 'solang valley', 'hadimba temple', 'manu temple', 'vashisht temple',
+        'old manali', 'mall road', 'jogini falls', 'beas kund', 'chandrakhani pass',
+        'hamta pass', 'bhrigu lake', 'gulaba', 'kothi', 'rahi falls', 'manikaran',
+        'great himalayan national park', 'pin valley national park', 'paragliding solang',
+        'river rafting', 'skiing solang', 'zorbing', 'atv rides',
+      ];
+    }
+    
+    // Shimla - Queen of Hills
+    if (key.contains('shimla')) {
+      return [
+        'mall road', 'ridge', 'jakhu temple', 'christ church', 'gaiety theatre',
+        'kufri', 'chadwick falls', 'tara devi temple', 'himalayan bird park',
+        'indian institute of advanced study', 'summer hill', 'prospect hill',
+        'annandale', 'scandal point', 'laxminarayan temple', 'kali bari temple',
+        'state museum', 'viceregal lodge', 'gorton castle', 'peterhoff',
+        'wildflower hall', 'chail', 'kasauli', 'solan', 'barog',
+      ];
+    }
+    
+    // Darjeeling - Queen of the Himalayas
+    if (key.contains('darjeeling')) {
+      return [
+        'tiger hill', 'batasia loop', 'peace pagoda', 'padmaja naidu himalayan zoological park',
+        'himalayan mountaineering institute', 'ropeway', 'tea garden', 'rock garden',
+        'ganga maya park', 'observatory hill', 'st andrew church', 'lloyd botanical garden',
+        'toy train', 'darjeeling himalayan railway', 'ghoom', 'kalimpong', 'mirik',
+        'sandakphu', 'singalila national park', 'phalut', 'kanchenjunga national park',
+      ];
+    }
+    
+    // Mussoorie - Queen of the Hills
+    if (key.contains('mussoorie')) {
+      return [
+        'kempty falls', 'gun hill', 'lal tibba', 'camel back road', 'mussoorie lake',
+        'company garden', 'jwalaji temple', 'christ church', 'landour', 'happy valley',
+        'clouds end', 'nag tibba', 'dhanolti', 'surkanda devi temple', 'george everest house',
+        'mussoorie heritage centre', 'ropeway', 'bhatta falls', 'mossy falls',
+      ];
+    }
+    
+    // Nainital - Lake District of India
+    if (key.contains('nainital')) {
+      return [
+        'naini lake', 'naina devi temple', 'tiffin top', 'snow view point', 'eco cave gardens',
+        'high altitude zoo', 'lands end', 'kilbury bird sanctuary', 'hanuman garhi',
+        'gurney house', 'st john church', 'mallital', 'tallital', 'nainital boat club',
+        'pangot', 'sattal', 'bhimtal', 'naukuchiatal', 'khurpatal',
+      ];
+    }
+    
+    // Khajuraho - Temples of Love
+    if (key.contains('khajuraho')) {
+      return [
+        'kandariya mahadev temple', 'lakshmana temple', 'vishvanatha temple', 'parshvanatha temple',
+        'adhinatha temple', 'chaturbhuj temple', 'jain temples', 'archaeological museum',
+        'light and sound show', 'raja cafe', 'lakshmana temple complex', 'western group temples',
+        'eastern group temples', 'southern group temples', 'panna national park',
+      ];
+    }
+    
+    // Gokarna - Beach Paradise
+    if (key.contains('gokarna')) {
+      return [
+        'om beach', 'kudle beach', 'half moon beach', 'paradise beach', 'gokarna beach',
+        'mahabaleshwar temple', 'mahaganapati temple', 'kotiteertha', 'bhadrakali temple',
+        'sirsi', 'yana', 'mirjan fort', 'aigumbe falls', 'jog falls',
+      ];
+    }
+    
+    // Pondicherry - French Riviera of the East
+    if (key.contains('pondicherry') || key.contains('puducherry')) {
+      return [
+        'promenade beach', 'rock beach', 'auroville', 'auroville beach', 'paradise beach',
+        'sri aurobindo ashram', 'immaculate conception cathedral', 'sacred heart basilica',
+        'french quarter', 'botanical garden', 'chunnambar boat house', 'serenity beach',
+        'matrimandir', 'auroville beach', 'raj niwas', 'government park',
+      ];
+    }
+    
+    // Puri - Spiritual Beach Destination
+    if (key.contains('puri')) {
+      return [
+        'jagannath temple', 'puri beach', 'chilika lake', 'konark sun temple',
+        'golden beach', 'swargadwar', 'gundicha temple', 'loknath temple',
+        'sakshi gopal temple', 'ramachandi temple', 'pipli', 'ragurajpur',
+        'satapada', 'nirmaljhara', 'balighai beach', 'chandrabhaga beach',
+      ];
+    }
+    
+    // Konark - Sun Temple
+    if (key.contains('konark')) {
+      return [
+        'konark sun temple', 'konark beach', 'chandrabhaga beach', 'archaeological museum',
+        'ramachandi temple', 'beleswar beach', 'pipli', 'ragurajpur',
+      ];
+    }
+    
+    // Wayanad - Green Paradise
+    if (key.contains('wayanad')) {
+      return [
+        'edakkal caves', 'banasura sagar dam', 'chembra peak', 'meenmutty waterfalls',
+        'soochipara falls', 'kuruva island', 'pookode lake', 'lakkidi viewpoint',
+        'thirunelli temple', 'muthanga wildlife sanctuary', 'tholpetty wildlife sanctuary',
+        'wayanad heritage museum', 'phantom rock', 'neelimala viewpoint', 'chain tree',
+      ];
+    }
+    
+    // Thekkady - Wildlife & Spice
+    if (key.contains('thekkady') || key.contains('periyar')) {
+      return [
+        'periyar national park', 'periyar lake', 'elephant junction', 'spice plantation',
+        'kathakali centre', 'mullaperiyar dam', 'mangala devi temple', 'vandiperiyar',
+        'kumily', 'boat ride periyar', 'jungle safari', 'elephant ride',
+        'tiger reserve', 'cardamom hills', 'kurisumala', 'pandikuzhi',
+      ];
+    }
+    
+    // Alleppey - Backwaters Paradise
+    if (key.contains('alleppey') || key.contains('alappuzha')) {
+      return [
+        'alleppey backwaters', 'houseboat', 'vembanad lake', 'marari beach',
+        'kuttanad', 'karumadi kuttan', 'revi karunakaran museum', 'amritapuri',
+        'pathiramanal island', 'krishnapuram palace', 'kayamkulam', 'champakulam',
+        'kumarakom bird sanctuary', 'nehru trophy boat race', 'punnamada lake',
+      ];
+    }
+    
+    // Varkala - Cliff Beach Paradise
+    if (key.contains('varkala')) {
+      return [
+        'varkala beach', 'papanasam beach', 'kappil beach', 'janardhana swamy temple',
+        'sivagiri mutt', 'kadakkal', 'anchuthengu fort', 'ponnumthuruthu island',
+        'edava beach', 'kappil lake', 'varkala cliff', 'golden beach',
+      ];
+    }
+    
+    // Kovalam - Beach Paradise
+    if (key.contains('kovalam')) {
+      return [
+        'kovalam beach', 'lighthouse beach', 'hawah beach', 'samudra beach',
+        'halcyon castle', 'kovalam lighthouse', 'karamana river', 'vettukad church',
+        'padmanabhaswamy temple', 'shanghumukham beach', 'vellayani lake',
       ];
     }
     
@@ -617,15 +1105,25 @@ class ItineraryService {
       ];
     }
     
-    // Karnataka
+    // Karnataka - Mysore - City of Palaces
     if (key.contains('mysore') || key.contains('mysuru')) {
       return [
-        'mysore palace', 'chamundi hills', 'chamundi temple', 'brindavan gardens',
-        'srirangapatna', 'daria daulat bagh', 'gumbaz', 'rani lakshmi bai memorial',
+        // Palaces & Heritage
+        'mysore palace', 'jaganmohan palace', 'lalitha mahal palace', 'jayalakshmi vilas mansion',
+        'chamundi hills', 'chamundi temple', 'brindavan gardens', 'srirangapatna',
+        'daria daulat bagh', 'gumbaz', 'rani lakshmi bai memorial', 'tipu sultan summer palace',
+        // Viewpoints & Scenic Spots
+        'chamundi hill viewpoint', 'karanji lake', 'kukkarahalli lake', 'lingambudhi lake',
+        'hebbal lake', 'balmuri falls', 'gaganachukki falls', 'barachukki falls',
+        // Museums & Culture
         'mysore zoo', 'rail museum', 'folklore museum', 'regional museum of natural history',
-        'st philomena cathedral', 'jaganmohan palace', 'karanji lake', 'kukkarahalli lake',
-        'bandipur national park', 'nagarhole national park', 'coorg', 'ooty',
-        'shivanasamudra falls', 'talakadu', 'somnathpur temple', 'belur halebidu',
+        'wax museum', 'sand museum', 'oriental research institute', 'government museum',
+        // Temples & Religious Sites
+        'st philomena cathedral', 'trinidad cathedral', 'somnathpur temple', 'talakadu',
+        'belur halebidu', 'shravanabelagola', 'melkote', 'srirangapatna temple',
+        // Nature & Wildlife
+        'bandipur national park', 'nagarhole national park', 'madhugiri', 'shivanasamudra falls',
+        'coorg', 'ooty', 'nandi hills', 'skandagiri hills',
       ];
     }
     
@@ -826,14 +1324,20 @@ class ItineraryService {
     final water = place.additionalTags['water'];
     final manMade = place.additionalTags['man_made'];
     
-    // Beaches and water bodies
-    if (natural == 'beach' || place.additionalTags['place'] == 'beach') score += 40;
-    if (natural == 'waterfall' || water == 'waterfall') score += 35;
-    if (natural == 'lake' || natural == 'river' || natural == 'coastline') score += 25;
+    // Beaches and water bodies - HIGH PRIORITY for tourists
+    if (natural == 'beach' || place.additionalTags['place'] == 'beach') score += 50; // Increased from 40
+    if (natural == 'waterfall' || water == 'waterfall') score += 45; // Increased from 35
+    if (natural == 'lake' || natural == 'river' || natural == 'coastline') score += 30; // Increased from 25
+    
+    // Viewpoints - VERY HIGH PRIORITY for tourists
+    if (place.tourismType == 'viewpoint' || place.name.toLowerCase().contains('viewpoint') || 
+        place.name.toLowerCase().contains('view point') || place.name.toLowerCase().contains('point')) {
+      score += 50; // Very high priority for viewpoints
+    }
     
     // Hills and mountains
-    if (natural == 'peak' || natural == 'hill' || natural == 'ridge') score += 30;
-    if (natural == 'volcano' || natural == 'cliff') score += 25;
+    if (natural == 'peak' || natural == 'hill' || natural == 'ridge') score += 35; // Increased from 30
+    if (natural == 'volcano' || natural == 'cliff') score += 30; // Increased from 25
     
     // Parks and gardens
     if (leisure == 'park' || leisure == 'garden' || leisure == 'nature_reserve') score += 25;
@@ -876,18 +1380,22 @@ class ItineraryService {
       }
     }
 
-    // Enhanced boost for famous place keywords
-    if (name.contains('fort') || name.contains('palace') || name.contains('temple') || 
-        name.contains('beach') || name.contains('falls') || name.contains('hill') ||
-        name.contains('museum') || name.contains('gallery') || name.contains('park') ||
-        name.contains('lake') || name.contains('garden') || name.contains('valley') ||
-        name.contains('national park') || name.contains('wildlife') || name.contains('sanctuary') ||
-        name.contains('cave') || name.contains('mountain') || name.contains('peak') ||
-        name.contains('island') || name.contains('river') || name.contains('dam') ||
-        name.contains('zoo') || name.contains('aquarium') || name.contains('botanical') ||
-        name.contains('heritage') || name.contains('monument') || name.contains('memorial')) {
-      score += 20; // Increased from 15
-    }
+    // Enhanced boost for famous place keywords - PRIORITIZE TOURIST ATTRACTIONS
+    if (name.contains('beach')) score += 30; // Highest priority for beaches
+    if (name.contains('waterfall') || name.contains('falls')) score += 30; // Highest priority for waterfalls
+    if (name.contains('viewpoint') || name.contains('view point') || name.contains('point')) score += 30; // Highest priority for viewpoints
+    if (name.contains('fort') || name.contains('palace')) score += 25; // High priority for forts/palaces
+    if (name.contains('temple') || name.contains('church') || name.contains('mosque')) score += 20;
+    if (name.contains('hill') || name.contains('mountain') || name.contains('peak')) score += 25;
+    if (name.contains('museum') || name.contains('gallery')) score += 20;
+    if (name.contains('park') || name.contains('garden')) score += 20;
+    if (name.contains('lake') || name.contains('river') || name.contains('dam')) score += 25;
+    if (name.contains('valley')) score += 25;
+    if (name.contains('national park') || name.contains('wildlife') || name.contains('sanctuary')) score += 30;
+    if (name.contains('cave')) score += 25;
+    if (name.contains('island')) score += 25;
+    if (name.contains('zoo') || name.contains('aquarium') || name.contains('botanical')) score += 20;
+    if (name.contains('heritage') || name.contains('monument') || name.contains('memorial')) score += 20;
 
     // Boost for adventure and outdoor activity keywords
     if (name.contains('adventure') || name.contains('trekking') || name.contains('camping') ||
@@ -964,6 +1472,7 @@ class ItineraryService {
         transportation,
         usedPlaces,
         budgetLevel,
+        destination,
       );
       if (morningActivity != null) {
         final attractionCost = _getBudgetAppropriateAttractionCost(budgetLevel, morningActivity.tourismType ?? 'attraction');
@@ -973,6 +1482,32 @@ class ItineraryService {
           customCost: attractionCost,
         ));
         usedPlaces.add(_getPlaceKey(morningActivity));
+      }
+
+      // Late morning activity (11:00 AM - 12:00 PM) - Additional attraction (moved before afternoon)
+      if (dayPlans.length < durationInDays || day == 0) {
+        final lateMorningActivity = _selectActivity(
+          categorizedPlaces,
+          interests,
+          'morning',
+          day,
+          budgetAmount,
+          travelers,
+          durationInDays,
+          transportation,
+          usedPlaces,
+          budgetLevel,
+          destination,
+        );
+        if (lateMorningActivity != null) {
+          final attractionCost = _getBudgetAppropriateAttractionCost(budgetLevel, lateMorningActivity.tourismType ?? 'attraction');
+          activities.add(Activity.fromPlaceDetails(
+            lateMorningActivity,
+            '11:00 AM',
+            customCost: attractionCost,
+          ));
+          usedPlaces.add(_getPlaceKey(lateMorningActivity));
+        }
       }
 
       // Afternoon activity (2:00 PM - 5:00 PM) - PRIORITIZE ATTRACTIONS
@@ -987,6 +1522,7 @@ class ItineraryService {
         transportation,
         usedPlaces,
         budgetLevel,
+        destination,
       );
       if (afternoonActivity != null) {
         final attractionCost = _getBudgetAppropriateAttractionCost(budgetLevel, afternoonActivity.tourismType ?? 'attraction');
@@ -1010,6 +1546,7 @@ class ItineraryService {
         transportation,
         usedPlaces,
         budgetLevel,
+        destination,
       );
       if (eveningActivity != null) {
         final attractionCost = _getBudgetAppropriateAttractionCost(budgetLevel, eveningActivity.tourismType ?? 'attraction');
@@ -1054,6 +1591,9 @@ class ItineraryService {
         // Add transportation activities
         final transportActivities = _generateTransportationActivities(transportation, travelers, day + 1, budgetLevel);
         activities.addAll(transportActivities);
+        
+        // Sort activities by time to ensure chronological order
+        activities.sort((a, b) => _compareTime(a.time, b.time));
         
         // Use dynamic budget calculation if user provided budget, otherwise use budget level
         final dayCost = budgetAmount != null 
@@ -1187,6 +1727,46 @@ class ItineraryService {
     };
   }
 
+  /// Compare two time strings (e.g., "9:00 AM", "2:30 PM") and return comparison result
+  int _compareTime(String time1, String time2) {
+    final time1Minutes = _timeToMinutes(time1);
+    final time2Minutes = _timeToMinutes(time2);
+    return time1Minutes.compareTo(time2Minutes);
+  }
+
+  /// Convert time string (e.g., "9:00 AM", "2:30 PM") to minutes since midnight
+  int _timeToMinutes(String time) {
+    try {
+      // Remove spaces and convert to uppercase
+      final cleanTime = time.trim().toUpperCase();
+      
+      // Check if AM or PM
+      final isPM = cleanTime.contains('PM');
+      final isAM = cleanTime.contains('AM');
+      
+      // Extract hour and minute
+      final timePart = cleanTime.replaceAll(RegExp(r'[APM\s]'), '');
+      final parts = timePart.split(':');
+      
+      if (parts.length < 2) return 0;
+      
+      int hour = int.tryParse(parts[0]) ?? 0;
+      int minute = int.tryParse(parts[1]) ?? 0;
+      
+      // Convert to 24-hour format
+      if (isPM && hour != 12) {
+        hour += 12;
+      } else if (isAM && hour == 12) {
+        hour = 0;
+      }
+      
+      return hour * 60 + minute;
+    } catch (e) {
+      // If parsing fails, return 0 (midnight) as default
+      return 0;
+    }
+  }
+
   PlaceDetails? _selectActivity(
     Map<String, List<PlaceDetails>> categorizedPlaces,
     List<String> interests,
@@ -1198,6 +1778,7 @@ class ItineraryService {
     String? transportation,
     Set<String> usedPlaces,
     BudgetLevel budgetLevel,
+    String destination,
   ) {
     final random = Random();
     List<PlaceDetails> candidates = [];
@@ -1258,7 +1839,10 @@ class ItineraryService {
 
     if (candidates.isEmpty) return null;
 
-    // Sort candidates by priority (attractions first, then others)
+    // Get curated keywords for better scoring (famous places)
+    final curatedKeywords = _getCuratedKeywords(destination);
+    
+    // Sort candidates by score (famous places get higher scores)
     candidates.sort((a, b) {
       // Prioritize attractions over other types
       final aIsAttraction = a.tourismType != null || 
@@ -1273,15 +1857,35 @@ class ItineraryService {
       if (aIsAttraction && !bIsAttraction) return -1;
       if (!aIsAttraction && bIsAttraction) return 1;
       
-      // If both are attractions or both are not, maintain original order
+      // If both are attractions, score them by fame/popularity
+      if (aIsAttraction && bIsAttraction) {
+        final scoreA = _scorePlace(a, curatedKeywords);
+        final scoreB = _scorePlace(b, curatedKeywords);
+        return scoreB.compareTo(scoreA); // Higher score first
+      }
+      
+      // For non-attractions, prefer those with ratings
+      if (a.rating != null && b.rating == null) return -1;
+      if (a.rating == null && b.rating != null) return 1;
+      if (a.rating != null && b.rating != null) {
+        return b.rating!.compareTo(a.rating!);
+      }
+      
       return 0;
     });
 
-    // Select from top candidates (prioritize attractions)
-    final topCandidates = candidates.take(5).toList(); // Take top 5 candidates
-    final selected = topCandidates[random.nextInt(topCandidates.length)];
-    
-    return selected;
+    // Select from top candidates (prioritize highest-scored famous attractions)
+    // Take top 10 instead of 5, but prefer top 3 (more likely to be famous)
+    final topCandidates = candidates.take(10).toList();
+    if (topCandidates.length <= 3) {
+      return topCandidates[random.nextInt(topCandidates.length)];
+    }
+    // 70% chance to pick from top 3 (most famous), 30% from rest
+    if (random.nextDouble() < 0.7) {
+      return topCandidates[random.nextInt(3)];
+    } else {
+      return topCandidates[3 + random.nextInt(topCandidates.length - 3)];
+    }
   }
 
   PlaceDetails? _selectRestaurant(
@@ -1665,7 +2269,7 @@ class ItineraryService {
   }
 
   // Fallback itinerary when external APIs fail
-  Itinerary _generateFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers) {
+  Itinerary _generateFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers, {DateTime? startDate, DateTime? endDate}) {
     print('Generating fallback itinerary for $destination');
     
     final dayPlans = <DayPlan>[];
@@ -1737,6 +2341,8 @@ class ItineraryService {
       dayPlans: dayPlans,
       summary: 'A $durationInDays-day adventure in $destination featuring ${interests.isEmpty ? 'diverse experiences' : interests.join(', ')}. This itinerary includes carefully selected attractions, dining experiences, and activities to make your trip memorable.',
       totalEstimatedCost: 2000.0 * durationInDays,
+      startDate: startDate,
+      endDate: endDate,
     );
   }
 }

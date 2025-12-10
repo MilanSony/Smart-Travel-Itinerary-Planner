@@ -237,6 +237,8 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
         travelers: _travelers,
         budget: _budgetController.text.isNotEmpty ? _budgetController.text : null,
         transportation: _selectedTransportation,
+        startDate: _startDate,
+        endDate: _endDate,
       ).timeout(
         const Duration(seconds: 30),
         onTimeout: () {

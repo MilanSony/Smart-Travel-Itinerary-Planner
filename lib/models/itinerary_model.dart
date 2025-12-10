@@ -444,6 +444,8 @@ class Itinerary {
   final List<DayPlan> dayPlans;
   final String? summary;
   final double? totalEstimatedCost;
+  final DateTime? startDate;
+  final DateTime? endDate;
 
   Itinerary({
     required this.destination,
@@ -451,5 +453,7 @@ class Itinerary {
     required this.dayPlans,
     this.summary,
     this.totalEstimatedCost,
+    this.startDate,
+    this.endDate,
   });
 }

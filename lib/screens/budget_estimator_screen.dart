@@ -36,7 +36,13 @@ class BudgetEstimatorScreen extends StatefulWidget {
 
 class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
     with SingleTickerProviderStateMixin {
-  final BudgetEstimatorService _budgetService = BudgetEstimatorService();
+  // TODO: Replace with your Gemini API key from https://aistudio.google.com/app/apikey
+  // Get your API key: https://aistudio.google.com/app/apikey
+  static const String? _geminiApiKey = "AIzaSyAUj6xV4nS8TQnja-3AdAo0e2Ecma3FC1g"; // Paste your API key here: 'AIza...'
+  
+  final BudgetEstimatorService _budgetService = BudgetEstimatorService(
+    apiKey: _geminiApiKey,
+  );
   final _formKey = GlobalKey<FormState>();
   final _budgetController = TextEditingController();
   final _destinationController = TextEditingController();
@@ -50,7 +56,6 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
   late TabController _tabController;
   List<String> _selectedPreferences = [];
   bool _showPerPerson = false;
-  bool _forceShowOptimize = false;
 
   String? _validateInputs() {
     if (!_formKey.currentState!.validate()) {
@@ -72,10 +77,23 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
     return null;
   }
 
+  Future<void> _regenerateFromCurrentEstimation() async {
+    if (_currentEstimation == null) return;
+
+    // Prefill controllers from the current estimation to ensure validation passes
+    _destinationController.text = _currentEstimation!.destination;
+    _travelersController.text = _currentEstimation!.travelers.toString();
+    _budgetController.text = _currentEstimation!.totalBudget.toStringAsFixed(0);
+    _startDate = _currentEstimation!.startDate;
+    _endDate = _currentEstimation!.endDate;
+
+    await _generateEstimation();
+  }
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     
     // Initialize with provided values
     if (widget.destination != null) {
@@ -104,15 +122,6 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
         _generateEstimation();
       });
     }
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _budgetController.dispose();
-    _destinationController.dispose();
-    _travelersController.dispose();
-    super.dispose();
   }
 
   Future<void> _generateEstimation() async {
@@ -154,8 +163,6 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
       setState(() {
         _currentEstimation = estimation;
         _isLoading = false;
-        _forceShowOptimize = false;
-        _setTabController(_tabCountFor(estimation));
       });
     } catch (e) {
       setState(() {
@@ -190,7 +197,6 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
       setState(() {
         _currentEstimation = optimized;
         _isLoading = false;
-        _setTabController(_tabCountFor(optimized));
       });
 
       if (mounted) {
@@ -208,6 +214,15 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
       });
     }
   }
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _budgetController.dispose();
+    _destinationController.dispose();
+    _travelersController.dispose();
+    super.dispose();
+  }
+
 
   Future<void> _selectDate(bool isStartDate) async {
     final picked = await showDatePicker(
@@ -265,7 +280,11 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
         bottom: _currentEstimation != null
             ? TabBar(
                 controller: _tabController,
-                tabs: _buildTabs(_currentEstimation!),
+                tabs: const [
+                  Tab(text: 'Overview', icon: Icon(Icons.dashboard)),
+                  Tab(text: 'Breakdown', icon: Icon(Icons.pie_chart)),
+                  Tab(text: 'Optimize', icon: Icon(Icons.tune)),
+                ],
               )
             : null,
       ),
@@ -276,7 +295,11 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
                 ? _buildInputForm(theme)
                 : TabBarView(
                     controller: _tabController,
-                    children: _buildTabViews(_currentEstimation!, theme),
+                    children: [
+                      _buildOverviewTab(_currentEstimation!, theme),
+                      _buildBreakdownTab(_currentEstimation!, theme),
+                      _buildOptimizeTab(_currentEstimation!, theme),
+                    ],
                   ),
       ),
     );
@@ -593,21 +616,6 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
             ),
           ),
           const SizedBox(height: 16),
-          if (!_shouldShowOptimize(estimation))
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _forceShowOptimize = true;
-                    _setTabController(_tabCountFor(estimation), initialIndex: 2);
-                  });
-                },
-                icon: const Icon(Icons.tune),
-                label: const Text('See savings tips'),
-              ),
-            ),
-          if (!_shouldShowOptimize(estimation)) const SizedBox(height: 4),
           // Cost Range Card
           Card(
             elevation: 4,
@@ -991,10 +999,7 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: () {
-                      // Regenerate with current settings
-                      _generateEstimation();
-                    },
+                    onPressed: _regenerateFromCurrentEstimation,
                     icon: const Icon(Icons.refresh),
                     label: const Text('Regenerate Estimate'),
                     style: OutlinedButton.styleFrom(
@@ -1155,52 +1160,6 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
     );
   }
 
-  List<Tab> _buildTabs(BudgetEstimation estimation) {
-    final tabs = <Tab>[
-      const Tab(text: 'Overview', icon: Icon(Icons.dashboard)),
-      const Tab(text: 'Breakdown', icon: Icon(Icons.pie_chart)),
-    ];
-    if (_shouldShowOptimize(estimation)) {
-      tabs.add(const Tab(text: 'Optimize', icon: Icon(Icons.tune)));
-    }
-    return tabs;
-  }
-
-  List<Widget> _buildTabViews(BudgetEstimation estimation, ThemeData theme) {
-    final views = <Widget>[
-      _buildOverviewTab(estimation, theme),
-      _buildBreakdownTab(estimation, theme),
-    ];
-    if (_shouldShowOptimize(estimation)) {
-      views.add(_buildOptimizeTab(estimation, theme));
-    }
-    return views;
-  }
-
-  bool _shouldShowOptimize(BudgetEstimation estimation) {
-    return _forceShowOptimize || estimation.estimatedTotalCost > estimation.totalBudget;
-  }
-
-  int _tabCountFor(BudgetEstimation estimation) => _shouldShowOptimize(estimation) ? 3 : 2;
-
-  void _setTabController(int length, {int initialIndex = 0}) {
-    if (!mounted) return;
-    final currentIndex = _tabController.index;
-    final old = _tabController;
-    final newController = TabController(
-      length: length,
-      vsync: this,
-      initialIndex: initialIndex.clamp(0, length - 1),
-    );
-    // Preserve index when possible
-    if (initialIndex == 0 && currentIndex < length) {
-      newController.index = currentIndex;
-    }
-    setState(() {
-      _tabController = newController;
-    });
-    old.dispose();
-  }
 }
 
 

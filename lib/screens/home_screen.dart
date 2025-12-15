@@ -27,8 +27,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final User? _currentUser = FirebaseAuth.instance.currentUser;
 
   // Your list of pages for the body is correct
-  static const List<Widget> _pages = <Widget>[
-    DashboardPage(),
+  List<Widget> get _pages => <Widget>[
+    DashboardPage(onNavigateToTrips: () => _onDrawerItemTapped(1)),
     MyTripsPage(),
     ProfilePage(),
   ];
@@ -178,7 +178,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
 // --- Modern Professional Dashboard Design ---
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
+  final VoidCallback? onNavigateToTrips;
+  
+  const DashboardPage({super.key, this.onNavigateToTrips});
 
   @override
   Widget build(BuildContext context) {
@@ -225,84 +227,760 @@ class DashboardPage extends StatelessWidget {
           ),
         ),
         SafeArea(
-      child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-                mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-                    'Welcome, $userName!',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          shadows: const [
-                            Shadow(
-                              color: Colors.black54,
-                              offset: Offset(0, 2),
-                              blurRadius: 6,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              children: [
+                const Spacer(),
+                Text(
+                  'Welcome, $userName!',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black54,
+                            offset: Offset(0, 2),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ) ??
+                      const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black54,
+                            offset: Offset(0, 2),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                ),
+                const SizedBox(height: 40),
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 320,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => const PlanTripScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.add_circle_outline_rounded, size: 24, color: Colors.white),
+                          label: const Text(
+                            'Plan a New Trip',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
                             ),
-                          ],
-                        ) ??
-                        const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black54,
-                              offset: Offset(0, 2),
-                              blurRadius: 6,
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(320, 60),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                            backgroundColor: const Color(0xFF4C74E0),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            elevation: 8,
+                            shadowColor: Colors.black.withOpacity(0.3),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: 320,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.directions_car_rounded, size: 24, color: Colors.white),
+                          label: const Text(
+                            'Find or Offer Rides',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(320, 60),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                            backgroundColor: const Color(0xFF26A69A),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            elevation: 8,
+                            shadowColor: Colors.black.withOpacity(0.3),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                // Recent Trips Section at bottom with medium size
+                if (user != null) _RecentTripsSection(
+                  userId: user.uid,
+                  onNavigateToTrips: onNavigateToTrips,
+                ),
+                const SizedBox(height: 24),
+          ],
+        ),
+      ),
+        ),
+      ],
+    );
+  }
+}
+
+// Recent Trips Section Widget
+class _RecentTripsSection extends StatelessWidget {
+  final String userId;
+  final VoidCallback? onNavigateToTrips;
+
+  const _RecentTripsSection({
+    required this.userId,
+    this.onNavigateToTrips,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    final tripsStream = FirebaseFirestore.instance
+        .collection('trips')
+        .where('userId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .snapshots();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: tripsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 200,
+            child: Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const SizedBox.shrink();
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final tripDoc = docs.first;
+        final data = tripDoc.data() as Map<String, dynamic>;
+        
+        // Extract trip data with validation
+        final destination = data['destination'] as String? ?? 'Unknown Destination';
+        final title = data['title'] as String? ?? 'My Trip';
+        final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+        final duration = data['durationInDays'] as int?;
+        final interests = (data['interests'] as List?)?.cast<String>() ?? [];
+        final summary = data['summary'] as Map<String, dynamic>?;
+        final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? [];
+        final totalEstimatedCost = summary?['totalEstimatedCost'];
+        final days = summary?['days'] as int?;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.history_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Recent Trip',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    shadows: const [
+                      Shadow(
+                        color: Colors.black54,
+                        offset: Offset(0, 2),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ) ?? const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black54,
+                        offset: Offset(0, 2),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: () {
+                // Show trip details dialog
+                _RecentTripsSection._showTripDetailsDialog(context, data, theme, onNavigateToTrips);
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 280),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header with destination and date
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF1E3A5F),
+                                ) ?? const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1E3A5F),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.location_on_rounded,
+                                    size: 14,
+                                    color: const Color(0xFF26A69A),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      destination,
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        fontSize: 14,
+                                        color: Colors.grey[700],
+                                        fontWeight: FontWeight.w500,
+                                      ) ?? TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[700],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4C74E0).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            createdAt != null
+                                ? _RecentTripsSection._formatDate(createdAt)
+                                : 'Recent',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF4C74E0),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Trip details
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if (duration != null || days != null)
+                          _InfoChip(
+                            icon: Icons.calendar_today_rounded,
+                            label: '${duration ?? days ?? 0} Days',
+                            color: const Color(0xFF4C74E0),
+                          ),
+                        if (interests.isNotEmpty)
+                          _InfoChip(
+                            icon: Icons.favorite_rounded,
+                            label: interests.take(1).join(', '),
+                            color: const Color(0xFF26A69A),
+                          ),
+                        if (totalEstimatedCost != null)
+                          _InfoChip(
+                            icon: Icons.currency_rupee_rounded,
+                            label: '₹${totalEstimatedCost.toStringAsFixed(0)}',
+                            color: Colors.orange[700]!,
+                          ),
+                      ],
+                    ),
+                    if (previewActivities.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'Highlights',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                        ) ?? TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ...previewActivities.take(2).map((activity) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.check_circle_outline_rounded,
+                              size: 14,
+                              color: const Color(0xFF26A69A),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                activity,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ) ?? TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                         ),
+                      )),
+                    ],
+                    const SizedBox(height: 12),
+                    // View details button
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF4C74E0),
+                            Color(0xFF26A69A),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'View Full Details',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ) ?? const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays == 0) {
+      return 'Today';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else if (difference.inDays < 30) {
+      final weeks = (difference.inDays / 7).floor();
+      return '$weeks ${weeks == 1 ? 'week' : 'weeks'} ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+
+  static void _showTripDetailsDialog(BuildContext context, Map<String, dynamic> data, ThemeData theme, VoidCallback? onNavigateToTrips) {
+    final destination = data['destination'] as String? ?? 'Unknown Destination';
+    final title = data['title'] as String? ?? 'My Trip';
+    final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+    final duration = data['durationInDays'] as int?;
+    final interests = (data['interests'] as List?)?.cast<String>() ?? [];
+    final budget = data['budget'] as String?;
+    final summary = data['summary'] as Map<String, dynamic>?;
+    final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? [];
+    final totalEstimatedCost = summary?['totalEstimatedCost'];
+    final days = summary?['days'] as int?;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+            padding: const EdgeInsets.all(24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF1E3A5F),
+                              ) ?? const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E3A5F),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.location_on_rounded,
+                                  size: 20,
+                                  color: Color(0xFF26A69A),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    destination,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontSize: 18,
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.w500,
+                                    ) ?? TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.of(context).pop(),
+                        color: Colors.grey[600],
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const PlanTripScreen()),
-                );
-              },
-                    icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-              label: const Text('Plan a New Trip'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 24),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      backgroundColor: const Color(0xFF4C74E0),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                      elevation: 4,
-                    ),
+                  const Divider(),
+                  const SizedBox(height: 20),
+                  // Trip Details
+                  _RecentTripsSection._buildDetailRow(
+                    context,
+                    Icons.calendar_today_rounded,
+                    'Duration',
+                    duration != null || days != null
+                        ? '${duration ?? days ?? 0} Days'
+                        : 'Not specified',
+                    const Color(0xFF4C74E0),
                   ),
                   const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
-                );
-              },
-                    icon: const Icon(Icons.directions_car_rounded, size: 18),
-                    label: const Text('Find or Offer Rides'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 24),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      backgroundColor: const Color(0xFF26A69A),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                      elevation: 4,
+                  if (interests.isNotEmpty)
+                    _RecentTripsSection._buildDetailRow(
+                      context,
+                      Icons.favorite_rounded,
+                      'Interests',
+                      interests.join(', '),
+                      const Color(0xFF26A69A),
+                    ),
+                  if (interests.isNotEmpty) const SizedBox(height: 12),
+                  if (budget != null && budget.isNotEmpty)
+                    _RecentTripsSection._buildDetailRow(
+                      context,
+                      Icons.account_balance_wallet_rounded,
+                      'Budget',
+                      '₹$budget',
+                      Colors.orange[700]!,
+                    ),
+                  if (budget != null && budget.isNotEmpty) const SizedBox(height: 12),
+                  if (totalEstimatedCost != null)
+                    _RecentTripsSection._buildDetailRow(
+                      context,
+                      Icons.currency_rupee_rounded,
+                      'Estimated Cost',
+                      '₹${totalEstimatedCost.toStringAsFixed(0)}',
+                      Colors.green[700]!,
+                    ),
+                  if (totalEstimatedCost != null) const SizedBox(height: 12),
+                  if (createdAt != null)
+                    _RecentTripsSection._buildDetailRow(
+                      context,
+                      Icons.access_time_rounded,
+                      'Created',
+                      _RecentTripsSection._formatDate(createdAt),
+                      Colors.purple[700]!,
+                    ),
+                  if (createdAt != null) const SizedBox(height: 20),
+                  if (previewActivities.isNotEmpty) ...[
+                    const Divider(),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Trip Highlights',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF1E3A5F),
+                      ) ?? const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E3A5F),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...previewActivities.map((activity) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            size: 20,
+                            color: const Color(0xFF26A69A),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              activity,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontSize: 15,
+                                color: Colors.grey[700],
+                              ) ?? TextStyle(
+                                fontSize: 15,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                  ],
+                  const SizedBox(height: 24),
+                  // Action button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: const Color(0xFF4C74E0),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Close',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  static Widget _buildDetailRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+  ) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 20, color: color),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ) ?? TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontSize: 16,
+                  color: Colors.grey[900],
+                  fontWeight: FontWeight.w600,
+                ) ?? const TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
+    );
+  }
+}
+
+// Info Chip Widget
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: color,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -655,7 +1333,7 @@ class MyTripsPage extends StatelessWidget {
           print('My Trips - Has error: ${snapshot.hasError}');
           print('My Trips - Error: ${snapshot.error}');
           print('My Trips - Data: ${snapshot.data}');
-          
+
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -665,7 +1343,7 @@ class MyTripsPage extends StatelessWidget {
           }
           final docs = snapshot.data?.docs ?? [];
           print('My Trips - Number of docs: ${docs.length}');
-          
+
           if (docs.isEmpty) {
             return Center(
               child: Column(
@@ -712,7 +1390,7 @@ class MyTripsPage extends StatelessWidget {
               }
             } catch (_) {
               tripRecommendations = [];
-            }
+          }
 
           return ListView.separated(
             padding: const EdgeInsets.all(12),

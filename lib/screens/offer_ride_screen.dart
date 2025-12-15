@@ -10,6 +10,14 @@ const List<String> validPlaces = [
   'Malappuram', 'Kannur', 'Alappuzha', 'Kottayam', 'Idukki', 'Kasaragod', 'Pathanamthitta', 'Wayanad',
   'Aluva', 'Paravur', 'Arakunnam', 'Vaikom', 'Karunagappally', 'Kayamkulam', 'Chengannur', 'Changanassery',
   'Munnar', 'Thekkady', 'Alleppey', 'Kumarakom', 'Varkala', 'Bekal', 'Athirappilly', 'Marari',
+  'Gavi', 'Peermade', 'Vagamon', 'Idukki', 'Wagamon', 'Ramakkalmedu', 'Ponmudi', 'Thenmala',
+  'Kollam Beach', 'Ashtamudi Lake', 'Palaruvi Falls', 'Jatayu Earth Center', 'Munroe Island',
+  'Kappad Beach', 'Payyambalam Beach', 'Muzhappilangad Beach', 'St Angelo Fort', 'Thalassery Fort',
+  'Palakkad Fort', 'Silent Valley', 'Malampuzha', 'Nelliampathy', 'Parambikulam', 'Attapadi',
+  'Vadakkunnathan Temple', 'Punnathur Kotta', 'Guruvayur', 'Ponnani', 'Tanur', 'Kadalundi',
+  'Beypore', 'Kozhikode Beach', 'Mananchira', 'Tali Temple', 'Pazhassi Raja Museum', 'Kuttanad',
+  'Pathiramanal', 'Ambalapuzha', 'Krishnapuram Palace', 'Karumadi', 'Champakulam', 'Ilaveezhapoonchira',
+  'Ettumanoor', 'Thirunakkara', 'Poonjar Palace', 'Thangassery', 'Kollam Backwaters',
   'Thiruvananthapuram Central', 'Kochi Central', 'Ernakulam Junction', 'Kollam Junction', 
   'Thrissur Railway Station', 'Kochi Airport', 'Thiruvananthapuram Airport',
   
@@ -20,7 +28,9 @@ const List<String> validPlaces = [
   
   // Tamil Nadu
   'Chennai', 'Coimbatore', 'Madurai', 'Salem', 'Tiruchirappalli', 'Tirunelveli', 'Erode', 
-  'Dindigul', 'Tanjore', 'Vellore', 'Thanjavur', 'Tuticorin', 'Chennai Central', 'Chennai Airport',
+  'Dindigul', 'Tanjore', 'Vellore', 'Thanjavur', 'Tuticorin', 'Kanyakumari', 'Rameshwaram',
+  'Kodaikanal', 'Ooty', 'Yercaud', 'Kumbakonam', 'Thanjavur', 'Mahabalipuram', 'Kanchipuram',
+  'Chennai Central', 'Chennai Airport',
   
   // Maharashtra
   'Mumbai', 'Pune', 'Nagpur', 'Aurangabad', 'Nashik', 'Amravati', 'Solapur', 'Sangli', 
@@ -36,42 +46,62 @@ const List<String> validPlaces = [
   'Munnar', 'Ooty', 'Kodaikanal', 'Coorg', 'Wayanad', 'Lonavala', 'Khandala', 'Mahabaleshwar',
   'Mussoorie', 'Nainital', 'Shimla', 'Manali', 'Dalhousie', 'Kasauli', 'Kullu', 'Spiti',
   'Leh', 'Ladakh', 'Gulmarg', 'Pahalgam', 'Sonamarg', 'McLeod Ganj', 'Dharamshala',
+  'Gavi', 'Vagamon', 'Peermade', 'Ramakkalmedu', 'Yercaud', 'Kodaikanal', 'Ooty',
   
   // Beach Destinations
   'Gokarna', 'Varkala', 'Kovalam', 'Pondicherry', 'Diu', 'Daman', 'Andaman', 'Lakshadweep',
-  'Havelock', 'Neil Island', 'Port Blair',
+  'Havelock', 'Neil Island', 'Port Blair', 'Kanyakumari', 'Rameshwaram', 'Marari', 'Cherai',
   
   // Heritage & Cultural Destinations
   'Hampi', 'Khajuraho', 'Ajanta', 'Ellora', 'Konark', 'Puri', 'Bhubaneswar', 'Mahabalipuram',
   'Kanchipuram', 'Thanjavur', 'Madurai', 'Mysore', 'Udaipur', 'Jaisalmer', 'Jodhpur',
+  'Bikaner', 'Chittorgarh', 'Bundi', 'Jhalawar', 'Alwar', 'Bharatpur', 'Sawai Madhopur',
+  'Chittor', 'Ranakpur', 'Mount Abu', 'Pushkar', 'Bundi', 'Shekhawati',
   
   // Adventure & Spiritual Destinations
-  'Rishikesh', 'Haridwar', 'Varanasi', 'Allahabad', 'Pushkar', 'Mount Abu', 'Tirupati',
-  'Shirdi', 'Amritsar', 'Vaishno Devi', 'Badrinath', 'Kedarnath',
+  'Rishikesh', 'Haridwar', 'Varanasi', 'Allahabad', 'Prayagraj', 'Pushkar', 'Mount Abu', 'Tirupati',
+  'Shirdi', 'Amritsar', 'Vaishno Devi', 'Badrinath', 'Kedarnath', 'Gangotri', 'Yamunotri',
+  'Hemkund Sahib', 'Gurudwara Bangla Sahib', 'Golden Temple', 'Jagannath Puri', 'Dwarka',
+  'Somnath', 'Nathdwara', 'Ujjain', 'Omkareshwar', 'Maheshwar', 'Bodh Gaya', 'Rajgir',
+  'Nalanda', 'Sarnath', 'Mathura', 'Vrindavan', 'Ayodhya', 'Chitrakoot', 'Shirdi',
+  'Sabarimala', 'Guruvayur', 'Padmanabhaswamy', 'Tirumala', 'Srisailam', 'Lepakshi',
   
   // Wildlife & Nature
   'Corbett', 'Ranthambore', 'Bandhavgarh', 'Kanha', 'Periyar', 'Thekkady', 'Kumarakom',
-  'Alleppey', 'Bekal', 'Athirappilly',
+  'Alleppey', 'Bekal', 'Athirappilly', 'Kaziranga', 'Manas', 'Sunderbans', 'Gir',
+  'Pench', 'Tadoba', 'Sariska', 'Keoladeo', 'Dudhwa', 'Valley of Flowers', 'Nanda Devi',
+  'Jim Corbett', 'Bandipur', 'Nagarhole', 'Mudumalai', 'Silent Valley', 'Eravikulam',
+  'Parambikulam', 'Chinnar', 'Wayanad Wildlife', 'Thattekad', 'Kumarakom Bird Sanctuary',
   
   // Andhra Pradesh
-  'Hyderabad', 'Vijayawada', 'Visakhapatnam', 'Guntur', 'Tirupati', 'Hyderabad Railway Station',
-  'Secunderabad Junction', 'Hyderabad Airport',
+  'Hyderabad', 'Vijayawada', 'Visakhapatnam', 'Guntur', 'Tirupati', 'Araku Valley', 'Borra Caves',
+  'Lepakshi', 'Srisailam', 'Amaravati', 'Rajahmundry', 'Kurnool', 'Nellore', 'Anantapur',
+  'Hyderabad Railway Station', 'Secunderabad Junction', 'Hyderabad Airport',
   
   // Gujarat
-  'Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Jamnagar', 'Ahmedabad Railway Station',
-  'Ahmedabad Airport',
+  'Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Jamnagar', 'Dwarka', 'Somnath', 'Gir',
+  'Rann of Kutch', 'Bhuj', 'Patan', 'Modhera', 'Saputara', 'Pavagadh', 'Champaner',
+  'Gandhinagar', 'Porbandar', 'Junagadh', 'Ahmedabad Railway Station', 'Ahmedabad Airport',
   
   // West Bengal
-  'Kolkata', 'Howrah', 'Howrah Junction', 'Sealdah', 'Kolkata Airport',
+  'Kolkata', 'Howrah', 'Darjeeling', 'Kalimpong', 'Mirik', 'Kurseong', 'Siliguri',
+  'Sunderbans', 'Digha', 'Mandarmani', 'Shantiniketan', 'Bishnupur', 'Murshidabad',
+  'Howrah Junction', 'Sealdah', 'Kolkata Airport',
   
   // Rajasthan
-  'Jaipur', 'Jodhpur', 'Udaipur', 'Ajmer', 'Jaipur Railway Station', 'Jaipur Airport',
+  'Jaipur', 'Jodhpur', 'Udaipur', 'Ajmer', 'Bikaner', 'Jaisalmer', 'Pushkar', 'Mount Abu',
+  'Chittorgarh', 'Bundi', 'Alwar', 'Bharatpur', 'Sawai Madhopur', 'Ranakpur', 'Shekhawati',
+  'Mandawa', 'Nawalgarh', 'Fatehpur', 'Jaipur Railway Station', 'Jaipur Airport',
   
   // Uttar Pradesh
-  'Lucknow', 'Kanpur', 'Varanasi', 'Allahabad', 'Agra', 'Lucknow Railway Station',
+  'Lucknow', 'Kanpur', 'Varanasi', 'Allahabad', 'Prayagraj', 'Agra', 'Mathura', 'Vrindavan',
+  'Ayodhya', 'Sarnath', 'Bodh Gaya', 'Chitrakoot', 'Fatehpur Sikri', 'Lucknow Railway Station',
+  'Agra Fort', 'Taj Mahal', 'Sikandra', 'Itmad Ud Daulah',
   
   // Madhya Pradesh
-  'Indore', 'Bhopal', 'Jabalpur', 'Gwalior',
+  'Indore', 'Bhopal', 'Jabalpur', 'Gwalior', 'Khajuraho', 'Orchha', 'Mandu', 'Sanchi',
+  'Ujjain', 'Omkareshwar', 'Maheshwar', 'Pachmarhi', 'Bandhavgarh', 'Kanha', 'Pench',
+  'Satpura', 'Bhimbetka', 'Chanderi', 'Gwalior Fort', 'Jahaz Mahal',
   
   // Punjab
   'Amritsar', 'Ludhiana', 'Chandigarh', 'Jalandhar',
@@ -80,31 +110,48 @@ const List<String> validPlaces = [
   'Gurgaon', 'Faridabad', 'Panipat',
   
   // Bihar
-  'Patna', 'Gaya', 'Bhagalpur',
+  'Patna', 'Gaya', 'Bhagalpur', 'Bodh Gaya', 'Rajgir', 'Nalanda', 'Vaishali', 'Pawapuri',
+  'Kesaria', 'Vikramshila', 'Sasaram', 'Munger',
   
   // Orissa
-  'Bhubaneswar', 'Cuttack', 'Puri',
+  'Bhubaneswar', 'Cuttack', 'Puri', 'Konark', 'Chilika', 'Gopalpur', 'Dhauli', 'Udayagiri',
+  'Khandagiri', 'Ratnagiri', 'Lalitgiri', 'Simlipal', 'Bhitarkanika', 'Satapada',
   
   // Assam
-  'Guwahati', 'Jorhat', 'Tezpur',
+  'Guwahati', 'Jorhat', 'Tezpur', 'Kaziranga', 'Manas', 'Majuli', 'Sualkuchi', 'Hajo',
+  'Dibrugarh', 'Sivasagar', 'Tinsukia', 'Dibru Saikhowa', 'Nameri', 'Orang',
   
   // Jammu and Kashmir
-  'Srinagar', 'Jammu', 'Leh',
+  'Srinagar', 'Jammu', 'Leh', 'Gulmarg', 'Pahalgam', 'Sonamarg', 'Yusmarg', 'Katra',
+  'Vaishno Devi', 'Patnitop', 'Kishtwar', 'Doda', 'Anantnag', 'Baramulla', 'Kargil',
   
   // Himachal Pradesh
-  'Shimla', 'Manali', 'Dharamshala',
+  'Shimla', 'Manali', 'Dharamshala', 'Kullu', 'Dalhousie', 'Kasauli', 'Spiti', 'Kinnaur',
+  'McLeod Ganj', 'Kufri', 'Chail', 'Solan', 'Palampur', 'Kangra', 'Dharamshala', 'Triund',
+  'Kasol', 'Malana', 'Tosh', 'Kheerganga', 'Parvati Valley', 'Great Himalayan National Park',
   
   // Uttarakhand
-  'Dehradun', 'Haridwar', 'Nainital',
+  'Dehradun', 'Haridwar', 'Nainital', 'Rishikesh', 'Mussoorie', 'Almora', 'Ranikhet',
+  'Kausani', 'Auli', 'Valley of Flowers', 'Hemkund Sahib', 'Badrinath', 'Kedarnath',
+  'Gangotri', 'Yamunotri', 'Jim Corbett', 'Rajaji National Park', 'Corbett', 'Lansdowne',
+  'Chopta', 'Tungnath', 'Joshimath', 'Uttarkashi', 'Pithoragarh',
   
   // Telangana
-  'Warangal', 'Karimnagar', 'Nizamabad',
+  'Warangal', 'Karimnagar', 'Nizamabad', 'Nalgonda', 'Khammam', 'Ramagundam', 'Medak',
+  'Bhongir', 'Nagarjuna Sagar', 'Yadadri', 'Basara', 'Vemulawada',
   
   // Kerala Cities and Towns
   'Adoor', 'Alappuzha', 'Attingal', 'Beypore', 'Chalakudy', 'Changanassery', 'Cherthala',
   'Guruvayur', 'Kannur', 'Kasargod', 'Kothamangalam', 'Manjeri', 'Muvattupuzha', 'Nedumangad',
   'Neyyattinkara', 'Ottapalam', 'Palakkad', 'Payyanur', 'Perinthalmanna', 'Ponnani', 'Punalur',
-  'Shoranur', 'Taliparamba', 'Thalassery', 'Tirur', 'Varkala',
+  'Shoranur', 'Taliparamba', 'Thalassery', 'Tirur', 'Varkala', 'Gavi', 'Vagamon', 'Peermade',
+  'Ramakkalmedu', 'Cherai', 'Marari', 'Bekal', 'Athirappilly', 'Ponmudi', 'Thenmala', 'Kollam',
+  'Palaruvi Falls', 'Jatayu Earth Center', 'Munroe Island', 'Kappad Beach', 'Payyambalam Beach',
+  'Muzhappilangad Beach', 'St Angelo Fort', 'Thalassery Fort', 'Palakkad Fort', 'Silent Valley',
+  'Malampuzha', 'Nelliampathy', 'Parambikulam', 'Vadakkunnathan Temple', 'Punnathur Kotta',
+  'Kuttanad', 'Pathiramanal', 'Ambalapuzha', 'Krishnapuram Palace', 'Karumadi', 'Champakulam',
+  'Ilaveezhapoonchira', 'Ettumanoor', 'Thirunakkara', 'Poonjar Palace', 'Thangassery',
+  'Ashtamudi Lake', 'Kozhikode Beach', 'Mananchira', 'Tali Temple', 'Pazhassi Raja Museum',
   
   // Karnataka Cities
   'Bangalore', 'Bellary', 'Bijapur', 'Davangere', 'Gadag', 'Gulbarga', 'Hassan', 'Karwar',
@@ -113,12 +160,15 @@ const List<String> validPlaces = [
   // Tamil Nadu Cities
   'Dindigul', 'Kanchipuram', 'Karaikudi', 'Kumbakonam', 'Mayiladuthurai', 'Namakkal',
   'Pudukkottai', 'Ramanathapuram', 'Sivakasi', 'Thanjavur', 'Thoothukudi', 'Tiruppur',
-  'Tirunelveli', 'Tiruvannamalai', 'Vellore',
+  'Tirunelveli', 'Tiruvannamalai', 'Vellore', 'Kanyakumari', 'Rameshwaram', 'Yercaud',
+  'Mahabalipuram', 'Kodaikanal', 'Ooty',
   
-  // Maharashtra Cities
+  // Maharashtra Cities & Tourist Destinations
   'Ahmednagar', 'Akola', 'Amravati', 'Bhir', 'Buldhana', 'Jalgaon', 'Kolhapur',
   'Latur', 'Nagpur', 'Nashik', 'Osmanabad', 'Parbhani', 'Pune', 'Sangli', 'Satara',
-  'Solapur', 'Thane', 'Wardha', 'Yavatmal',
+  'Solapur', 'Thane', 'Wardha', 'Yavatmal', 'Ajanta', 'Ellora', 'Lonavala', 'Khandala',
+  'Mahabaleshwar', 'Panchgani', 'Matheran', 'Alibaug', 'Murud', 'Shirdi', 'Trimbakeshwar',
+  'Bhimashankar', 'Ganpatipule', 'Tarkarli', 'Malvan', 'Sindhudurg',
   
   // Railway Stations (Major)
   'Bangalore City Railway Station', 'Mumbai Central', 'Chennai Central', 'Howrah Junction',
@@ -131,6 +181,20 @@ const List<String> validPlaces = [
   'Delhi Airport', 'Mumbai Airport', 'Bangalore Airport', 'Chennai Airport', 'Kolkata Airport',
   'Hyderabad Airport', 'Pune Airport', 'Cochin Airport', 'Thiruvananthapuram Airport',
   'Goa Airport', 'Jaipur Airport', 'Ahmedabad Airport',
+  
+  // Additional Famous Destinations
+  'Sikkim', 'Gangtok', 'Lachung', 'Lachen', 'Pelling', 'Namchi', 'Ravangla', 'Yuksom',
+  'Meghalaya', 'Shillong', 'Cherrapunji', 'Mawlynnong', 'Dawki', 'Nongpoh',
+  'Mizoram', 'Aizawl', 'Lunglei', 'Champhai',
+  'Nagaland', 'Kohima', 'Dimapur', 'Mokokchung',
+  'Manipur', 'Imphal', 'Loktak Lake', 'Kangla Fort',
+  'Tripura', 'Agartala', 'Udaipur Tripura', 'Neermahal',
+  'Arunachal Pradesh', 'Itanagar', 'Tawang', 'Bomdila', 'Ziro',
+  'Puducherry', 'Karaikal', 'Yanam', 'Mahe',
+  'Daman and Diu', 'Diu', 'Daman',
+  'Lakshadweep', 'Kavaratti', 'Agatti', 'Bangaram',
+  'Andaman and Nicobar', 'Port Blair', 'Havelock', 'Neil Island', 'Ross Island',
+  'Baratang', 'Diglipur', 'Mayabunder',
 ];
 
 class OfferRideScreen extends StatefulWidget {

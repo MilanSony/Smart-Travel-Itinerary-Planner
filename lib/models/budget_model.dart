@@ -121,9 +121,10 @@ class BudgetEstimation {
 
   /// Get budget status (within budget, over budget, etc.)
   BudgetStatus get status {
-    if (budgetVariance > 0) {
+    // Treat exact matches and under-budget as "within"
+    if (budgetVariance >= 0) {
       return BudgetStatus.withinBudget;
-    } else if (budgetVariance.abs() / totalBudget < 0.1) {
+    } else if (totalBudget > 0 && budgetVariance.abs() / totalBudget < 0.1) {
       return BudgetStatus.slightlyOver;
     } else {
       return BudgetStatus.overBudget;
@@ -151,32 +152,36 @@ class BudgetEstimation {
       'minTotalCost': minTotalCost,
       'maxTotalCost': maxTotalCost,
       'categoryBreakdown': categoryBreakdown.map((c) => {
-        'category': c.category.index,
-        'estimatedCost': c.estimatedCost,
-        'minCost': c.minCost,
-        'maxCost': c.maxCost,
-        'description': c.description,
-        'percentage': c.percentage,
-      }).toList(),
+            'category': c.category.index,
+            'estimatedCost': c.estimatedCost,
+            'minCost': c.minCost,
+            'maxCost': c.maxCost,
+            'description': c.description,
+            'percentage': c.percentage,
+          }).toList(),
       'dailyBudgets': dailyBudgets.map((d) => {
-        'date': d.date.toIso8601String(),
-        'estimatedCost': d.estimatedCost,
-        'breakdown': d.breakdown.map((c) => {
-          'category': c.category.index,
-          'estimatedCost': c.estimatedCost,
-          'minCost': c.minCost,
-          'maxCost': c.maxCost,
-          'description': c.description,
-          'percentage': c.percentage,
-        }).toList(),
-        'notes': d.notes,
-      }).toList(),
-      'optimizations': optimizations.map((o) => {
-        'category': o.category,
-        'suggestion': o.suggestion,
-        'potentialSavings': o.potentialSavings,
-        'impact': o.impact,
-      }).toList(),
+            'date': d.date.toIso8601String(),
+            'estimatedCost': d.estimatedCost,
+            'breakdown': d.breakdown
+                .map((c) => {
+                      'category': c.category.index,
+                      'estimatedCost': c.estimatedCost,
+                      'minCost': c.minCost,
+                      'maxCost': c.maxCost,
+                      'description': c.description,
+                      'percentage': c.percentage,
+                    })
+                .toList(),
+            'notes': d.notes,
+          }).toList(),
+      'optimizations': optimizations
+          .map((o) => {
+                'category': o.category,
+                'suggestion': o.suggestion,
+                'potentialSavings': o.potentialSavings,
+                'impact': o.impact,
+              })
+          .toList(),
       'aiInsights': aiInsights,
       'createdAt': createdAt.toIso8601String(),
       'budgetVariance': budgetVariance,
@@ -196,42 +201,46 @@ class BudgetEstimation {
       minTotalCost: (map['minTotalCost'] ?? 0).toDouble(),
       maxTotalCost: (map['maxTotalCost'] ?? 0).toDouble(),
       categoryBreakdown: (map['categoryBreakdown'] as List?)
-          ?.map((c) => CostBreakdown(
-                category: BudgetCategory.values[c['category'] ?? 0],
-                estimatedCost: (c['estimatedCost'] ?? 0).toDouble(),
-                minCost: (c['minCost'] ?? 0).toDouble(),
-                maxCost: (c['maxCost'] ?? 0).toDouble(),
-                description: c['description'] ?? '',
-                icon: _getIconForCategory(BudgetCategory.values[c['category'] ?? 0]),
-                percentage: (c['percentage'] ?? 0).toDouble(),
-              ))
-          .toList() ?? [],
+              ?.map((c) => CostBreakdown(
+                    category: BudgetCategory.values[c['category'] ?? 0],
+                    estimatedCost: (c['estimatedCost'] ?? 0).toDouble(),
+                    minCost: (c['minCost'] ?? 0).toDouble(),
+                    maxCost: (c['maxCost'] ?? 0).toDouble(),
+                    description: c['description'] ?? '',
+                    icon: _getIconForCategory(BudgetCategory.values[c['category'] ?? 0]),
+                    percentage: (c['percentage'] ?? 0).toDouble(),
+                  ))
+              .toList() ??
+          [],
       dailyBudgets: (map['dailyBudgets'] as List?)
-          ?.map((d) => DailyBudget(
-                date: DateTime.parse(d['date']),
-                estimatedCost: (d['estimatedCost'] ?? 0).toDouble(),
-                breakdown: (d['breakdown'] as List?)
-                    ?.map((c) => CostBreakdown(
-                          category: BudgetCategory.values[c['category'] ?? 0],
-                          estimatedCost: (c['estimatedCost'] ?? 0).toDouble(),
-                          minCost: (c['minCost'] ?? 0).toDouble(),
-                          maxCost: (c['maxCost'] ?? 0).toDouble(),
-                          description: c['description'] ?? '',
-                          icon: _getIconForCategory(BudgetCategory.values[c['category'] ?? 0]),
-                          percentage: (c['percentage'] ?? 0).toDouble(),
-                        ))
-                    .toList() ?? [],
-                notes: d['notes'],
-              ))
-          .toList() ?? [],
+              ?.map((d) => DailyBudget(
+                    date: DateTime.parse(d['date']),
+                    estimatedCost: (d['estimatedCost'] ?? 0).toDouble(),
+                    breakdown: (d['breakdown'] as List?)
+                            ?.map((c) => CostBreakdown(
+                                  category: BudgetCategory.values[c['category'] ?? 0],
+                                  estimatedCost: (c['estimatedCost'] ?? 0).toDouble(),
+                                  minCost: (c['minCost'] ?? 0).toDouble(),
+                                  maxCost: (c['maxCost'] ?? 0).toDouble(),
+                                  description: c['description'] ?? '',
+                                  icon: _getIconForCategory(BudgetCategory.values[c['category'] ?? 0]),
+                                  percentage: (c['percentage'] ?? 0).toDouble(),
+                                ))
+                            .toList() ??
+                        [],
+                    notes: d['notes'],
+                  ))
+              .toList() ??
+          [],
       optimizations: (map['optimizations'] as List?)
-          ?.map((o) => BudgetOptimization(
-                category: o['category'] ?? '',
-                suggestion: o['suggestion'] ?? '',
-                potentialSavings: (o['potentialSavings'] ?? 0).toDouble(),
-                impact: o['impact'] ?? 'low',
-              ))
-          .toList() ?? [],
+              ?.map((o) => BudgetOptimization(
+                    category: o['category'] ?? '',
+                    suggestion: o['suggestion'] ?? '',
+                    potentialSavings: (o['potentialSavings'] ?? 0).toDouble(),
+                    impact: o['impact'] ?? 'low',
+                  ))
+              .toList() ??
+          [],
       aiInsights: map['aiInsights'],
       createdAt: DateTime.parse(map['createdAt']),
       budgetVariance: (map['budgetVariance'] ?? 0).toDouble(),
@@ -265,6 +274,4 @@ enum BudgetStatus {
   slightlyOver,
   overBudget,
 }
-
-
 

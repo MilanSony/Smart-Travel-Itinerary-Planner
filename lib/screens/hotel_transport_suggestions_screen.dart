@@ -1003,7 +1003,7 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        transport.type.replaceAll('_', ' ').toUpperCase(),
+                        transport.displayType,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: Colors.grey[600],
                           fontWeight: FontWeight.w500,

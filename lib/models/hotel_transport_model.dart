@@ -64,6 +64,13 @@ class HotelSuggestion {
           break;
         }
       }
+
+    // Fallback: estimate price per night if missing
+    if (pricePerNight == null) {
+      final typeStr = (tags['tourism'] ?? tags['amenity'] ?? 'hotel').toString();
+      final hotelIdSeed = '${lat.toStringAsFixed(6)}_${lon.toStringAsFixed(6)}';
+      pricePerNight = _estimateFallbackPrice(typeStr, rating, distance, hotelIdSeed);
+    }
     }
 
     // Extract facilities from OSM tags
@@ -149,16 +156,16 @@ class HotelSuggestion {
       // Clean and validate phone number from OSM
       phone = _cleanPhoneNumber(phone);
       if (!_isValidIndianPhone(phone)) {
-        phone = _generateFallbackPhone(hotelId);
+        phone = generateFallbackPhone(hotelId);
       }
     } else {
-      phone = _generateFallbackPhone(hotelId);
+      phone = generateFallbackPhone(hotelId);
     }
     
-    // Generate better address if not available
-    String? address = tags['addr:full'] ?? tags['addr:street'] ?? tags['addr:housenumber'];
+    // Extract comprehensive address from OSM tags
+    String? address = _extractOsmAddress(tags);
     if (address == null || address.isEmpty) {
-      address = _generateFallbackAddress(name, lat, lon, distance);
+      address = _generateFallbackAddress(name, lat, lon, distance, hotelId);
     }
 
     return HotelSuggestion(
@@ -387,7 +394,8 @@ class HotelSuggestion {
 
   /// Generate a fallback phone number based on hotel ID
   /// Returns a valid Indian phone number with +91 country code
-  static String _generateFallbackPhone(String hotelId) {
+  /// Public method for use in fallback generation
+  static String generateFallbackPhone(String hotelId) {
     final hash = hotelId.hashCode.abs();
     
     // Generate a valid 10-digit Indian mobile number
@@ -405,24 +413,112 @@ class HotelSuggestion {
     return '+91-$phoneNumber';
   }
 
-  /// Generate a fallback address based on hotel location
-  static String _generateFallbackAddress(String name, double lat, double lon, double distance) {
-    // Determine area based on distance from center
-    String area;
-    if (distance < 1.0) {
-      area = 'City Center';
-    } else if (distance < 3.0) {
-      area = 'Downtown';
-    } else if (distance < 5.0) {
-      area = 'Suburban Area';
-    } else {
-      area = 'Outskirts';
+  /// Extract address from OSM tags, combining multiple address components
+  static String? _extractOsmAddress(Map<String, dynamic> tags) {
+    // Try full address first
+    if (tags['addr:full'] != null && tags['addr:full'].toString().trim().isNotEmpty) {
+      return tags['addr:full'].toString().trim();
     }
     
-    // Add street number based on coordinates for uniqueness
-    final streetNum = ((lat * 1000).toInt() % 500 + 1).toString();
+    // Build address from components
+    final parts = <String>[];
     
-    return '$streetNum Main Street, $area';
+    // House number
+    if (tags['addr:housenumber'] != null) {
+      parts.add(tags['addr:housenumber'].toString().trim());
+    }
+    
+    // Street name
+    if (tags['addr:street'] != null) {
+      parts.add(tags['addr:street'].toString().trim());
+    }
+    
+    // Locality/Suburb
+    if (tags['addr:suburb'] != null) {
+      parts.add(tags['addr:suburb'].toString().trim());
+    } else if (tags['addr:locality'] != null) {
+      parts.add(tags['addr:locality'].toString().trim());
+    } else if (tags['addr:district'] != null) {
+      parts.add(tags['addr:district'].toString().trim());
+    }
+    
+    // City
+    if (tags['addr:city'] != null) {
+      parts.add(tags['addr:city'].toString().trim());
+    }
+    
+    // Postcode
+    if (tags['addr:postcode'] != null) {
+      parts.add(tags['addr:postcode'].toString().trim());
+    }
+    
+    // State
+    if (tags['addr:state'] != null) {
+      parts.add(tags['addr:state'].toString().trim());
+    }
+    
+    if (parts.isEmpty) {
+      return null;
+    }
+    
+    return parts.join(', ');
+  }
+
+  /// Generate a unique fallback address based on hotel location and name
+  static String _generateFallbackAddress(String name, double lat, double lon, double distance, String hotelId) {
+    // Use hotel ID hash for consistent unique addresses
+    final hash = hotelId.hashCode.abs();
+    
+    // Indian street name patterns
+    final streetTypes = [
+      'Road', 'Street', 'Avenue', 'Lane', 'Boulevard', 'Circle', 'Park', 'Nagar',
+      'Colony', 'Extension', 'Main Road', 'High Road', 'Cross Road', 'Marg', 'Path'
+    ];
+    
+    // Area names based on distance and hash
+    String area;
+    List<String> areaOptions;
+    
+    if (distance < 1.0) {
+      areaOptions = ['City Center', 'MG Road', 'Commercial Street', 'Market Area', 'Town Square'];
+    } else if (distance < 3.0) {
+      areaOptions = ['Downtown', 'Business District', 'Central Area', 'Main Area', 'City Area'];
+    } else if (distance < 5.0) {
+      areaOptions = ['Suburban Area', 'Residential Area', 'Outer Area', 'Extension Area', 'New Area'];
+    } else {
+      areaOptions = ['Outskirts', 'Peripheral Area', 'Outer Ring', 'Highway Area', 'Industrial Area'];
+    }
+    area = areaOptions[hash % areaOptions.length];
+    
+    // Generate unique street name from hotel name and coordinates
+    String streetName;
+    final nameWords = name.toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length > 3)
+        .take(2)
+        .toList();
+    
+    if (nameWords.isNotEmpty) {
+      // Use part of hotel name for street
+      final streetBase = nameWords[0].substring(0, min(nameWords[0].length, 8));
+      streetName = '${streetBase[0].toUpperCase()}${streetBase.substring(1)} ${streetTypes[hash % streetTypes.length]}';
+    } else {
+      // Use coordinates-based street name
+      final streetNum = ((lat * 10000).toInt() % 200 + 1).toString();
+      streetName = '${streetNum} ${streetTypes[hash % streetTypes.length]}';
+    }
+    
+    // Generate house/building number based on coordinates
+    final houseNum = ((lat * 1000).toInt() % 500 + 1).toString();
+    
+    // Combine into realistic address
+    return '$houseNum, $streetName, $area';
+  }
+
+  /// Public method to generate fallback address (for use in fallback hotel generation)
+  static String generateFallbackAddressForHotel(String name, double lat, double lon, double distance, String hotelId) {
+    return _generateFallbackAddress(name, lat, lon, distance, hotelId);
   }
 
   static String _getBestEnglishName(Map<String, dynamic> tags) {
@@ -447,6 +543,42 @@ class HotelSuggestion {
   }
 
   static double _degToRad(double deg) => deg * (3.141592653589793 / 180.0);
+
+  static double _estimateFallbackPrice(String hotelType, double? rating, double distanceKm, String seed) {
+    final type = hotelType.toLowerCase();
+    double base;
+    if (type.contains('resort')) {
+      base = 6000;
+    } else if (type.contains('apartment')) {
+      base = 4000;
+    } else if (type.contains('guest') || type.contains('hostel') || type.contains('camp') || type.contains('caravan')) {
+      base = 1500;
+    } else {
+      base = 3000;
+    }
+
+    // Adjust by rating
+    if (rating != null) {
+      base += (rating - 3.5) * 800; // +/- based on rating
+    }
+
+    // Adjust by distance (closer to center usually costs more)
+    if (distanceKm < 2) {
+      base *= 1.15;
+    } else if (distanceKm > 8) {
+      base *= 0.9;
+    }
+
+    // Add a small deterministic variation so prices differ
+    final variation = (seed.hashCode.abs() % 700) - 350; // -350 to +350
+    base += variation.toDouble();
+
+    // Clamp to sensible INR range
+    if (base < 700) base = 700;
+    if (base > 12000) base = 12000;
+
+    return base;
+  }
 
   IconData get icon {
     switch (hotelType) {
@@ -530,24 +662,73 @@ class TransportSuggestion {
       name = '${type.toString().replaceAll('_', ' ')} Station';
     }
 
-    // Determine transport type more accurately
+    // Determine transport type more accurately with comprehensive detection
     String transportType = 'transport';
+    
+    // Check aeroway first (airports)
     if (tags['aeroway'] != null) {
-      transportType = 'airport';
-    } else if (tags['railway'] == 'station') {
-      transportType = 'train_station';
-    } else if (tags['amenity'] == 'bus_station' || tags['public_transport'] == 'station') {
-      transportType = 'bus_station';
-    } else if (tags['amenity'] == 'taxi') {
-      transportType = 'taxi';
-    } else if (tags['amenity'] == 'car_rental') {
-      transportType = 'car_rental';
-    } else if (tags['amenity'] == 'ferry_terminal') {
-      transportType = 'ferry_terminal';
-    } else {
+      final aeroway = tags['aeroway'].toString().toLowerCase();
+      if (aeroway.contains('aerodrome') || aeroway.contains('airport')) {
+        transportType = 'airport';
+      } else if (aeroway.contains('helipad') || aeroway.contains('heliport')) {
+        transportType = 'heliport';
+      }
+    }
+    // Check railway (trains, metro)
+    else if (tags['railway'] != null) {
+      final railway = tags['railway'].toString().toLowerCase();
+      if (railway == 'station' || railway.contains('station')) {
+        // Check if it's metro or regular train
+        if (tags['station']?.toString().toLowerCase().contains('metro') == true ||
+            tags['network']?.toString().toLowerCase().contains('metro') == true ||
+            tags['subway'] != null) {
+          transportType = 'metro_station';
+        } else {
+          transportType = 'train_station';
+        }
+      } else if (railway.contains('halt') || railway.contains('platform')) {
+        transportType = 'train_station';
+      }
+    }
+    // Check public transport
+    else if (tags['public_transport'] != null) {
+      final pt = tags['public_transport'].toString().toLowerCase();
+      if (pt.contains('station') || pt.contains('stop')) {
+        if (tags['bus'] == 'yes' || tags['highway'] == 'bus_stop') {
+          transportType = 'bus_station';
+        } else {
+          transportType = 'public_transport_station';
+        }
+      }
+    }
+    // Check amenity
+    else if (tags['amenity'] != null) {
+      final amenity = tags['amenity'].toString().toLowerCase();
+      if (amenity == 'bus_station' || amenity.contains('bus')) {
+        transportType = 'bus_station';
+      } else if (amenity == 'taxi' || amenity.contains('taxi')) {
+        transportType = 'taxi';
+      } else if (amenity == 'car_rental' || amenity.contains('rental')) {
+        transportType = 'car_rental';
+      } else if (amenity == 'ferry_terminal' || amenity.contains('ferry')) {
+        transportType = 'ferry_terminal';
+      } else if (amenity.contains('parking')) {
+        transportType = 'parking';
+      }
+    }
+    // Check highway (bus stops, taxi stands)
+    else if (tags['highway'] != null) {
+      final highway = tags['highway'].toString().toLowerCase();
+      if (highway == 'bus_stop') {
+        transportType = 'bus_station';
+      }
+    }
+    // Fallback to tags
+    else {
       transportType = tags['amenity']?.toString() ?? 
                      tags['public_transport']?.toString() ?? 
                      tags['railway']?.toString() ?? 
+                     tags['aeroway']?.toString() ??
                      'transport';
     }
 
@@ -589,10 +770,35 @@ class TransportSuggestion {
       operatingHours = _getDefaultOperatingHours(transportType);
     }
 
-    // Extract route information
-    String? routeInfo = tags['route'] ?? tags['network'] ?? tags['operator'];
-    if (routeInfo == null || routeInfo.isEmpty) {
-      routeInfo = _getDefaultRouteInfo(transportType, name);
+    // Extract comprehensive route information
+    String? routeInfo;
+    final routeParts = <String>[];
+    
+    // Get route number/name
+    if (tags['route'] != null) {
+      routeParts.add('Route: ${tags['route']}');
+    }
+    
+    // Get network information
+    if (tags['network'] != null) {
+      routeParts.add('Network: ${tags['network']}');
+    }
+    
+    // Get operator information
+    if (tags['operator'] != null) {
+      routeParts.add('Operator: ${tags['operator']}');
+    }
+    
+    // Get ref (reference number)
+    if (tags['ref'] != null) {
+      routeParts.add('Ref: ${tags['ref']}');
+    }
+    
+    // Combine route info
+    if (routeParts.isNotEmpty) {
+      routeInfo = routeParts.join(' | ');
+    } else {
+      routeInfo = _getDefaultRouteInfo(transportType, name, tags);
     }
 
     // Determine availability
@@ -611,18 +817,18 @@ class TransportSuggestion {
     if (phone != null && phone.isNotEmpty) {
       phone = HotelSuggestion._cleanPhoneNumber(phone);
       if (!HotelSuggestion._isValidIndianPhone(phone)) {
-        phone = HotelSuggestion._generateFallbackPhone(transportId);
+        phone = HotelSuggestion.generateFallbackPhone(transportId);
       } else {
         phone = '+91-$phone';
       }
     } else {
-      phone = HotelSuggestion._generateFallbackPhone(transportId);
+      phone = HotelSuggestion.generateFallbackPhone(transportId);
     }
 
-    // Generate better address if not available
-    String? address = tags['addr:full'] ?? tags['addr:street'] ?? tags['addr:housenumber'];
+    // Extract comprehensive address from OSM tags
+    String? address = HotelSuggestion._extractOsmAddress(tags);
     if (address == null || address.isEmpty) {
-      address = _generateTransportAddress(name, lat, lon, distance);
+      address = _generateTransportAddress(name, lat, lon, distance, transportId);
     }
     
     return TransportSuggestion(
@@ -704,23 +910,47 @@ class TransportSuggestion {
     return 'Daily: 6:00 AM - 10:00 PM';
   }
 
-  /// Get default route information
-  static String _getDefaultRouteInfo(String transportType, String name) {
+  /// Get default route information with more details
+  static String _getDefaultRouteInfo(String transportType, String name, Map<String, dynamic> tags) {
     final typeStr = transportType.toLowerCase();
-    if (typeStr.contains('bus')) {
-      return 'Multiple routes available';
-    } else if (typeStr.contains('train')) {
-      return 'Connects to major cities';
-    } else if (typeStr.contains('airport')) {
-      return 'Domestic & International flights';
+    final nameLower = name.toLowerCase();
+    
+    if (typeStr.contains('bus') || typeStr.contains('bus_station')) {
+      // Check if it's a specific bus station
+      if (nameLower.contains('central') || nameLower.contains('main')) {
+        return 'Central bus station | Multiple routes to major cities | Local and intercity services';
+      } else if (nameLower.contains('interstate') || nameLower.contains('intercity')) {
+        return 'Intercity bus services | Long distance routes available';
+      }
+      return 'Multiple bus routes available | Local and intercity services';
+    } else if (typeStr.contains('train') || typeStr.contains('railway')) {
+      // Check if it's a major railway station
+      if (nameLower.contains('central') || nameLower.contains('junction') || 
+          nameLower.contains('main') || tags['station']?.toString().toLowerCase().contains('central') == true) {
+        return 'Major railway station | Connects to all major cities | Express and passenger trains';
+      }
+      return 'Railway station | Connects to major cities | Express and local trains';
+    } else if (typeStr.contains('metro')) {
+      return 'Metro station | Urban rapid transit | Multiple lines available';
+    } else if (typeStr.contains('airport') || typeStr.contains('aerodrome')) {
+      // Check if it's international
+      if (nameLower.contains('international') || tags['iata'] != null || tags['icao'] != null) {
+        return 'International airport | Domestic & International flights | Multiple airlines';
+      }
+      return 'Airport | Domestic flights | Regional connectivity';
     } else if (typeStr.contains('taxi')) {
-      return 'Local & intercity services';
-    } else if (typeStr.contains('car_rental')) {
-      return 'Self-drive & chauffeur options';
+      if (nameLower.contains('stand') || nameLower.contains('rank')) {
+        return 'Taxi stand | 24/7 service | Local and intercity | Metered and fixed rates';
+      }
+      return 'Taxi service | Local & intercity | 24/7 availability';
+    } else if (typeStr.contains('car_rental') || typeStr.contains('rental')) {
+      return 'Car rental service | Self-drive & chauffeur options | Multiple vehicle types';
     } else if (typeStr.contains('ferry')) {
-      return 'Regular ferry services';
+      return 'Ferry terminal | Regular ferry services | Passenger and vehicle transport';
+    } else if (typeStr.contains('heliport')) {
+      return 'Heliport | Helicopter services | Charter flights available';
     }
-    return 'Transport services available';
+    return 'Transport services available | Check with operator for routes';
   }
 
   /// Calculate distance between two coordinates (Haversine formula)
@@ -737,21 +967,58 @@ class TransportSuggestion {
 
   static double _degToRad(double deg) => deg * (3.141592653589793 / 180.0);
 
-  /// Generate fallback address for transport
-  static String _generateTransportAddress(String name, double? lat, double? lon, double? distance) {
+  /// Generate unique fallback address for transport
+  static String _generateTransportAddress(String name, double? lat, double? lon, double? distance, String transportId) {
+    // Use transport ID hash for consistent unique addresses
+    final hash = transportId.hashCode.abs();
+    
+    // Transport-specific street name patterns
+    final streetTypes = [
+      'Transport Road', 'Station Road', 'Terminal Road', 'Depot Road', 'Terminal Avenue',
+      'Railway Road', 'Bus Stand Road', 'Transit Road', 'Terminal Street', 'Depot Street'
+    ];
+    
+    // Area names based on distance and hash
     String area;
+    List<String> areaOptions;
+    
     if (distance == null || distance < 1.0) {
-      area = 'City Center';
+      areaOptions = ['City Center', 'Central Station Area', 'Main Terminal Area', 'Downtown', 'City Hub'];
     } else if (distance < 3.0) {
-      area = 'Downtown';
+      areaOptions = ['Downtown', 'Business District', 'Central Area', 'Main Area', 'City Area'];
     } else if (distance < 5.0) {
-      area = 'Suburban Area';
+      areaOptions = ['Suburban Area', 'Outer Terminal Area', 'Extension Area', 'Peripheral Area', 'Outer Area'];
     } else {
-      area = 'Outskirts';
+      areaOptions = ['Outskirts', 'Highway Area', 'Peripheral Terminal', 'Outer Ring', 'Industrial Area'];
+    }
+    area = areaOptions[hash % areaOptions.length];
+    
+    // Generate unique street name from transport name
+    String streetName;
+    final nameWords = name.toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length > 3)
+        .take(1)
+        .toList();
+    
+    if (nameWords.isNotEmpty && nameWords[0].length > 3) {
+      final streetBase = nameWords[0].substring(0, min(nameWords[0].length, 10));
+      streetName = '${streetBase[0].toUpperCase()}${streetBase.substring(1)} ${streetTypes[hash % streetTypes.length]}';
+    } else {
+      final streetNum = lat != null ? ((lat * 1000).toInt() % 300 + 1).toString() : '1';
+      streetName = '$streetNum ${streetTypes[hash % streetTypes.length]}';
     }
     
-    final streetNum = lat != null ? ((lat * 1000).toInt() % 500 + 1).toString() : '1';
-    return '$streetNum Transport Road, $area';
+    // Generate building/terminal number
+    final buildingNum = lat != null ? ((lat * 1000).toInt() % 200 + 1).toString() : '1';
+    
+    return '$buildingNum, $streetName, $area';
+  }
+
+  /// Public method to generate fallback address for transport (for use in fallback transport generation)
+  static String generateFallbackAddressForTransport(String name, double? lat, double? lon, double? distance, String transportId) {
+    return _generateTransportAddress(name, lat, lon, distance, transportId);
   }
 
   static String _getBestEnglishName(Map<String, dynamic> tags) {
@@ -765,32 +1032,58 @@ class TransportSuggestion {
   }
 
   IconData get icon {
-    switch (type.toLowerCase()) {
-      case 'bus_station':
-      case 'bus':
-      case 'public_transport':
-        return Icons.directions_bus;
-      case 'train_station':
-      case 'railway':
-      case 'station':
-        return Icons.train;
-      case 'taxi':
-        return Icons.local_taxi;
-      case 'rental_car':
-      case 'car_rental':
-        return Icons.directions_car;
-      case 'bike_sharing':
-      case 'bicycle_rental':
-        return Icons.pedal_bike;
-      case 'airport':
-      case 'aerodrome':
-        return Icons.flight;
-      case 'ferry_terminal':
-      case 'ferry':
-        return Icons.directions_boat;
-      default:
-        return Icons.directions_transit;
+    final typeLower = type.toLowerCase();
+    if (typeLower.contains('airport') || typeLower.contains('aerodrome')) {
+      return Icons.flight;
+    } else if (typeLower.contains('heliport')) {
+      return Icons.flight_takeoff;
+    } else if (typeLower.contains('train') || typeLower.contains('railway')) {
+      return Icons.train;
+    } else if (typeLower.contains('metro')) {
+      return Icons.subway;
+    } else if (typeLower.contains('bus')) {
+      return Icons.directions_bus;
+    } else if (typeLower.contains('taxi')) {
+      return Icons.local_taxi;
+    } else if (typeLower.contains('car_rental') || typeLower.contains('rental')) {
+      return Icons.directions_car;
+    } else if (typeLower.contains('bike') || typeLower.contains('bicycle')) {
+      return Icons.pedal_bike;
+    } else if (typeLower.contains('ferry')) {
+      return Icons.directions_boat;
+    } else if (typeLower.contains('parking')) {
+      return Icons.local_parking;
+    } else if (typeLower.contains('public_transport')) {
+      return Icons.directions_transit;
     }
+    return Icons.directions_transit;
+  }
+
+  /// Get display name for transport type
+  String get displayType {
+    final typeLower = type.toLowerCase();
+    if (typeLower.contains('airport')) {
+      return 'Airport';
+    } else if (typeLower.contains('heliport')) {
+      return 'Heliport';
+    } else if (typeLower.contains('train_station') || typeLower.contains('railway')) {
+      return 'Train Station';
+    } else if (typeLower.contains('metro')) {
+      return 'Metro Station';
+    } else if (typeLower.contains('bus_station') || typeLower.contains('bus')) {
+      return 'Bus Station';
+    } else if (typeLower.contains('taxi')) {
+      return 'Taxi Service';
+    } else if (typeLower.contains('car_rental')) {
+      return 'Car Rental';
+    } else if (typeLower.contains('ferry')) {
+      return 'Ferry Terminal';
+    } else if (typeLower.contains('parking')) {
+      return 'Parking';
+    }
+    return type.replaceAll('_', ' ').split(' ').map((w) => 
+      w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1)
+    ).join(' ');
   }
 
   String get displayCost => estimatedCost != null ? '₹${estimatedCost!.toStringAsFixed(0)}' : 'Cost varies';

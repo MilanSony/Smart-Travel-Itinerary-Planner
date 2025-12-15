@@ -68,9 +68,13 @@ class BudgetEstimatorService {
         costMultiplier * 
         seasonMultiplier;
 
-    // Calculate category breakdowns
+    // Calculate INDEPENDENT estimated total cost based on actual trip costs
+    // (not based on user's budget - we'll compare later)
+    final independentEstimatedTotal = adjustedDailyCostPerPerson * travelers * durationInDays;
+
+    // Calculate category breakdowns based on INDEPENDENT estimated cost
     final categoryBreakdown = _calculateCategoryBreakdown(
-      totalBudget,
+      independentEstimatedTotal, // Use independent estimate, not user's budget
       durationInDays,
       travelers,
       adjustedDailyCostPerPerson,
@@ -78,18 +82,19 @@ class BudgetEstimatorService {
       destination,
     );
 
-    // Calculate daily budgets
+    // Calculate total estimated cost from breakdown
+    final estimatedTotalCost = categoryBreakdown
+        .fold(0.0, (sum, breakdown) => sum + breakdown.estimatedCost);
+    
+    // Calculate daily budgets (normalized to match total estimated cost)
     final dailyBudgets = _calculateDailyBudgets(
       startDate,
       endDate,
       categoryBreakdown,
       durationInDays,
+      estimatedTotalCost,
       itinerary,
     );
-
-    // Calculate total estimated cost
-    final estimatedTotalCost = categoryBreakdown
-        .fold(0.0, (sum, breakdown) => sum + breakdown.estimatedCost);
     
     final minTotalCost = categoryBreakdown
         .fold(0.0, (sum, breakdown) => sum + breakdown.minCost);
@@ -148,63 +153,17 @@ class BudgetEstimatorService {
     double? targetBudget,
     List<String>? priorities, // Categories to prioritize
   }) async {
-    if (targetBudget == null || targetBudget == currentEstimation.totalBudget) {
-      // Just regenerate optimizations
-      final optimizations = await _generateOptimizations(
-        currentEstimation.categoryBreakdown,
-        currentEstimation.totalBudget,
-        currentEstimation.estimatedTotalCost,
-        currentEstimation.destination,
-        currentEstimation.endDate.difference(currentEstimation.startDate).inDays + 1,
-        currentEstimation.travelers,
-        priorities,
-      );
-
-      return BudgetEstimation(
-        tripId: currentEstimation.tripId,
-        destination: currentEstimation.destination,
-        startDate: currentEstimation.startDate,
-        endDate: currentEstimation.endDate,
-        travelers: currentEstimation.travelers,
-        totalBudget: currentEstimation.totalBudget,
-        estimatedTotalCost: currentEstimation.estimatedTotalCost,
-        minTotalCost: currentEstimation.minTotalCost,
-        maxTotalCost: currentEstimation.maxTotalCost,
-        categoryBreakdown: currentEstimation.categoryBreakdown,
-        dailyBudgets: currentEstimation.dailyBudgets,
-        optimizations: optimizations,
-        aiInsights: currentEstimation.aiInsights,
-        createdAt: currentEstimation.createdAt,
-        budgetVariance: currentEstimation.budgetVariance,
-        budgetUtilization: currentEstimation.budgetUtilization,
-      );
-    }
-
-    // Recalculate with new target budget
+    // Keep the independent estimated costs; do NOT force-fit to target budget.
+    // We only adjust the declared budget and recompute optimizations/insights.
+    final appliedBudget = targetBudget ?? currentEstimation.totalBudget;
     final durationInDays = currentEstimation.endDate
         .difference(currentEstimation.startDate)
         .inDays + 1;
 
-    // Adjust category breakdowns proportionally or based on priorities
-    final adjustedBreakdown = _adjustBudgetForTarget(
-      currentEstimation.categoryBreakdown,
-      targetBudget,
-      priorities,
-    );
-
-    final estimatedTotalCost = adjustedBreakdown
-        .fold(0.0, (sum, breakdown) => sum + breakdown.estimatedCost);
-    
-    final minTotalCost = adjustedBreakdown
-        .fold(0.0, (sum, breakdown) => sum + breakdown.minCost);
-    
-    final maxTotalCost = adjustedBreakdown
-        .fold(0.0, (sum, breakdown) => sum + breakdown.maxCost);
-
     final optimizations = await _generateOptimizations(
-      adjustedBreakdown,
-      targetBudget,
-      estimatedTotalCost,
+      currentEstimation.categoryBreakdown,
+      appliedBudget,
+      currentEstimation.estimatedTotalCost,
       currentEstimation.destination,
       durationInDays,
       currentEstimation.travelers,
@@ -215,14 +174,16 @@ class BudgetEstimatorService {
       currentEstimation.destination,
       durationInDays,
       currentEstimation.travelers,
-      targetBudget,
-      estimatedTotalCost,
-      adjustedBreakdown,
+      appliedBudget,
+      currentEstimation.estimatedTotalCost,
+      currentEstimation.categoryBreakdown,
       priorities,
     );
 
-    final budgetVariance = targetBudget - estimatedTotalCost;
-    final budgetUtilization = (estimatedTotalCost / targetBudget) * 100;
+    final budgetVariance = appliedBudget - currentEstimation.estimatedTotalCost;
+    final double budgetUtilization = appliedBudget > 0
+        ? (currentEstimation.estimatedTotalCost / appliedBudget) * 100.0
+        : 0.0;
 
     return BudgetEstimation(
       tripId: currentEstimation.tripId,
@@ -230,16 +191,12 @@ class BudgetEstimatorService {
       startDate: currentEstimation.startDate,
       endDate: currentEstimation.endDate,
       travelers: currentEstimation.travelers,
-      totalBudget: targetBudget,
-      estimatedTotalCost: estimatedTotalCost,
-      minTotalCost: minTotalCost,
-      maxTotalCost: maxTotalCost,
-      categoryBreakdown: adjustedBreakdown,
-      dailyBudgets: _recalculateDailyBudgets(
-        currentEstimation.dailyBudgets,
-        adjustedBreakdown,
-        durationInDays,
-      ),
+      totalBudget: appliedBudget,
+      estimatedTotalCost: currentEstimation.estimatedTotalCost,
+      minTotalCost: currentEstimation.minTotalCost,
+      maxTotalCost: currentEstimation.maxTotalCost,
+      categoryBreakdown: currentEstimation.categoryBreakdown,
+      dailyBudgets: currentEstimation.dailyBudgets,
       optimizations: optimizations,
       aiInsights: aiInsights,
       createdAt: DateTime.now(),
@@ -317,7 +274,7 @@ class BudgetEstimatorService {
   }
 
   List<CostBreakdown> _calculateCategoryBreakdown(
-    double totalBudget,
+    double estimatedTotalCost, // This is now the independent estimated cost, not user's budget
     int durationInDays,
     int travelers,
     double dailyCostPerPerson,
@@ -341,7 +298,7 @@ class BudgetEstimatorService {
     }
 
     percentages.forEach((category, percentage) {
-      final estimatedCost = totalBudget * percentage;
+      final estimatedCost = estimatedTotalCost * percentage; // Use independent estimate
       final variance = estimatedCost * 0.15; // 15% variance
       final minCost = estimatedCost - variance;
       final maxCost = estimatedCost + variance;
@@ -365,36 +322,46 @@ class BudgetEstimatorService {
     DateTime endDate,
     List<CostBreakdown> categoryBreakdown,
     int durationInDays,
+    double totalEstimatedCost,
     Itinerary? itinerary,
   ) {
     final dailyBudgets = <DailyBudget>[];
-    final dailyBaseCost = categoryBreakdown
-        .fold(0.0, (sum, b) => sum + b.estimatedCost) / durationInDays;
+    
+    // Calculate multipliers for each day (first/last days get 1.2x, others 1.0x)
+    final dayMultipliers = <double>[];
+    double totalMultiplier = 0.0;
+    for (int i = 0; i < durationInDays; i++) {
+      final isFirstDay = i == 0;
+      final isLastDay = i == durationInDays - 1;
+      final multiplier = (isFirstDay || isLastDay) ? 1.2 : 1.0;
+      dayMultipliers.add(multiplier);
+      totalMultiplier += multiplier;
+    }
+    
+    // Normalize so daily budgets sum exactly to totalEstimatedCost
+    final baseDailyCost = totalEstimatedCost / totalMultiplier;
 
     for (int i = 0; i < durationInDays; i++) {
       final date = startDate.add(Duration(days: i));
       final isFirstDay = i == 0;
       final isLastDay = i == durationInDays - 1;
-
-      // First and last days might have different costs (travel days)
-      double dayMultiplier = 1.0;
-      if (isFirstDay || isLastDay) {
-        dayMultiplier = 1.2; // Higher cost for travel days
-      }
-
-      final dailyCost = dailyBaseCost * dayMultiplier;
+      final dayMultiplier = dayMultipliers[i];
       
-      // Distribute categories proportionally
+      // Calculate normalized daily cost
+      final dailyCost = baseDailyCost * dayMultiplier;
+      
+      // Distribute categories proportionally (normalized)
       final dailyBreakdown = categoryBreakdown.map((cat) {
-        final dailyCatCost = (cat.estimatedCost / durationInDays) * dayMultiplier;
+        // Calculate proportional cost for this day
+        final catDailyCost = (cat.estimatedCost * dayMultiplier) / totalMultiplier;
         return CostBreakdown(
           category: cat.category,
-          estimatedCost: dailyCatCost,
-          minCost: dailyCatCost * 0.7,
-          maxCost: dailyCatCost * 1.3,
+          estimatedCost: catDailyCost,
+          minCost: catDailyCost * 0.7,
+          maxCost: catDailyCost * 1.3,
           description: cat.description,
           icon: cat.icon,
-          percentage: (dailyCatCost / dailyCost) * 100,
+          percentage: dailyCost > 0 ? (catDailyCost / dailyCost) * 100 : 0,
         );
       }).toList();
 
@@ -466,27 +433,39 @@ class BudgetEstimatorService {
     List<CostBreakdown> newCategoryBreakdown,
     int durationInDays,
   ) {
-    final dailyBaseCost = newCategoryBreakdown
-        .fold(0.0, (sum, b) => sum + b.estimatedCost) / durationInDays;
+    // Calculate total estimated cost from new breakdown
+    final totalEstimatedCost = newCategoryBreakdown
+        .fold(0.0, (sum, b) => sum + b.estimatedCost);
+    
+    // Calculate multipliers for each day
+    double totalMultiplier = 0.0;
+    final dayMultipliers = <double>[];
+    for (int i = 0; i < durationInDays; i++) {
+      final isFirstDay = i == 0;
+      final isLastDay = i == durationInDays - 1;
+      final multiplier = (isFirstDay || isLastDay) ? 1.2 : 1.0;
+      dayMultipliers.add(multiplier);
+      totalMultiplier += multiplier;
+    }
+    
+    final baseDailyCost = totalEstimatedCost / totalMultiplier;
 
     return currentDailyBudgets.asMap().entries.map((entry) {
       final index = entry.key;
       final original = entry.value;
-      final isFirstDay = index == 0;
-      final isLastDay = index == durationInDays - 1;
-      final dayMultiplier = (isFirstDay || isLastDay) ? 1.2 : 1.0;
-      final dailyCost = dailyBaseCost * dayMultiplier;
+      final dayMultiplier = dayMultipliers[index];
+      final dailyCost = baseDailyCost * dayMultiplier;
 
       final dailyBreakdown = newCategoryBreakdown.map((cat) {
-        final dailyCatCost = (cat.estimatedCost / durationInDays) * dayMultiplier;
+        final catDailyCost = (cat.estimatedCost * dayMultiplier) / totalMultiplier;
         return CostBreakdown(
           category: cat.category,
-          estimatedCost: dailyCatCost,
-          minCost: dailyCatCost * 0.7,
-          maxCost: dailyCatCost * 1.3,
+          estimatedCost: catDailyCost,
+          minCost: catDailyCost * 0.7,
+          maxCost: catDailyCost * 1.3,
           description: cat.description,
           icon: cat.icon,
-          percentage: (dailyCatCost / dailyCost) * 100,
+          percentage: dailyCost > 0 ? (catDailyCost / dailyCost) * 100 : 0,
         );
       }).toList();
 

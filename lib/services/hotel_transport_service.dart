@@ -290,22 +290,28 @@ class HotelTransportService {
   }
 
   List<TransportSuggestion> _dedupeTransport(List<TransportSuggestion> transport) {
-    // Strict deduplication: use exact name + coordinates (like hotels)
+    // Aggressive deduplication: group by normalized name + type + rounded coords
     final map = <String, TransportSuggestion>{};
-    
+
     for (final t in transport) {
-      // Use exact name + coordinates for deduplication (handle nullable coordinates)
-      final key = (t.lat != null && t.lon != null)
-          ? _placeKey(t.name, t.lat!, t.lon!)
-          : '${t.name.toLowerCase().trim()}_no_coords';
-      
-      // If we already have this exact transport (same name + location), keep the one closer to center
+      final normalizedName = t.name.toLowerCase().trim();
+      final normalizedType = t.type.toLowerCase().trim();
+
+      // If coordinates exist, round to ~100m to catch near-duplicates
+      String key;
+      if (t.lat != null && t.lon != null) {
+        key =
+            '${normalizedName}_${normalizedType}_${t.lat!.toStringAsFixed(3)}_${t.lon!.toStringAsFixed(3)}';
+      } else {
+        // No coordinates – fall back to name + type only
+        key = '${normalizedName}_${normalizedType}_no_coords';
+      }
+
+      // Keep the option closer to center when duplicates collide
       if (map.containsKey(key)) {
         final existing = map[key]!;
         final existingDist = existing.distanceFromCenter ?? double.infinity;
         final newDist = t.distanceFromCenter ?? double.infinity;
-        
-        // Keep the one closer to center
         if (newDist < existingDist) {
           map[key] = t;
         }
@@ -313,7 +319,7 @@ class HotelTransportService {
         map[key] = t;
       }
     }
-    
+
     return map.values.toList();
   }
 

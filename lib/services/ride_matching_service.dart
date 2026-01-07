@@ -1,12 +1,14 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+// import 'package:cloud_functions/cloud_functions.dart'; // Uncomment when Cloud Functions are setup
 import '../models/ride_model.dart';
 import 'knn_service.dart';
 
 class RideMatchingService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  // final FirebaseFunctions _functions = FirebaseFunctions.instance; // Uncomment when Cloud Functions are setup
   final KnnService _knnService = KnnService(k: 5);
   final Random _random = Random();
 
@@ -18,22 +20,64 @@ class RideMatchingService {
   }
 
   /// Generates and sends vehicle entry OTP to passenger's email
-  /// Returns the OTP for display (in production, this would send email via Cloud Functions or email service)
-  Future<String> generateAndSendVehicleEntryOTP(String matchId, String passengerEmail) async {
+  /// Returns the OTP for display (passenger can also view it in the app)
+  ///
+  /// EMAIL SENDING SETUP:
+  /// 1. For production: Setup Firebase Cloud Functions + SendGrid/Mailgun
+  /// 2. See CLOUD_FUNCTION_EMAIL_SETUP.md for complete setup instructions
+  /// 3. Uncomment the Cloud Functions code below after setup
+  Future<String> generateAndSendVehicleEntryOTP(
+      String matchId, String passengerEmail) async {
     final otp = _generateVehicleEntryOTP();
-    
+
     // Store OTP in Firestore
     await _db.collection('ride_matches').doc(matchId).update({
       'vehicleEntryOTP': otp,
       'updatedAt': FieldValue.serverTimestamp(),
     });
-    
-    // TODO: Send email to passenger's email address
-    // In production, use Firebase Cloud Functions or email service (SendGrid, Mailgun, etc.)
-    // For now, the OTP is stored and can be retrieved
-    print('Vehicle Entry OTP for $passengerEmail: $otp');
-    print('TODO: Send email to $passengerEmail with OTP: $otp');
-    
+
+    // Get match details for email context
+    final matchDoc = await _db.collection('ride_matches').doc(matchId).get();
+    final matchData = matchDoc.data();
+
+    // ============================================================================
+    // EMAIL SENDING - OPTION 1: Cloud Functions (Recommended for Production)
+    // ============================================================================
+    // Uncomment this section after setting up Firebase Cloud Functions
+    // See CLOUD_FUNCTION_EMAIL_SETUP.md for complete instructions
+
+    /*
+    try {
+      final callable = _functions.httpsCallable('sendOTPEmail');
+      final result = await callable.call({
+        'passengerEmail': passengerEmail,
+        'passengerName': matchData?['passengerName'] ?? 'Passenger',
+        'driverName': matchData?['driverName'] ?? 'Driver',
+        'otp': otp,
+      });
+
+      print('✅ OTP email sent successfully to $passengerEmail');
+      print('Cloud Function response: ${result.data}');
+    } catch (e) {
+      print('⚠️ Error sending OTP email via Cloud Function: $e');
+      // Don't throw - OTP is still stored and visible in the passenger's app
+      // Email is a secondary notification channel
+    }
+    */
+
+    // ============================================================================
+    // CURRENT BEHAVIOR - Development/Testing
+    // ============================================================================
+    // OTP is stored in Firestore and displayed in the passenger's app
+    // Passenger can view the OTP in Find Rides → Contact Info dialog
+    // Email notification will be added when Cloud Functions are configured
+
+    print('📱 Vehicle Entry OTP for $passengerEmail: $otp');
+    print(
+        'ℹ️  Passenger can view this OTP in their app (Find Rides → Contact Info)');
+    print(
+        '📧 To enable email sending, setup Cloud Functions (see CLOUD_FUNCTION_EMAIL_SETUP.md)');
+
     return otp;
   }
 
@@ -42,20 +86,20 @@ class RideMatchingService {
     try {
       final matchDoc = await _db.collection('ride_matches').doc(matchId).get();
       if (!matchDoc.exists) return false;
-      
+
       final matchData = matchDoc.data()!;
       final storedOTP = matchData['vehicleEntryOTP'] as String?;
-      
+
       if (storedOTP == null || storedOTP != otp.trim()) {
         return false;
       }
-      
+
       // Mark vehicle entry as verified
       await _db.collection('ride_matches').doc(matchId).update({
         'vehicleEntryVerified': true,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      
+
       return true;
     } catch (e) {
       print('Error verifying vehicle entry OTP: $e');
@@ -82,11 +126,11 @@ class RideMatchingService {
       // Parse pickup time (format: "HH:mm")
       final timeParts = offer.pickupTime.split(':');
       if (timeParts.length != 2) return true;
-      
+
       final hour = int.tryParse(timeParts[0]);
       final minute = int.tryParse(timeParts[1]);
       if (hour == null || minute == null) return true;
-      
+
       // Combine pickup date and time
       final pickupDateTime = DateTime(
         offer.pickupDate.year,
@@ -95,7 +139,7 @@ class RideMatchingService {
         hour,
         minute,
       );
-      
+
       // Check if pickup date/time has passed
       return pickupDateTime.isBefore(DateTime.now());
     } catch (e) {
@@ -146,16 +190,66 @@ class RideMatchingService {
   }
 
   /// Gets all active ride offers (only upcoming rides)
-  Stream<List<RideOffer>> getActiveRideOffers() {
-    return _db
-        .collection('ride_offers')
-        .where('status', isEqualTo: 'active')
-        .orderBy('pickupDate')
-        .snapshots()
-        .map((snapshot) => snapshot.docs
+  /// If [includeZeroSeats] is true, includes offers with 0 available seats
+  /// If [userId] is provided, also includes inactive rides where user has accepted match
+  Stream<List<RideOffer>> getActiveRideOffers({
+    bool includeZeroSeats = false,
+    String? userId,
+  }) async* {
+    if (userId == null) {
+      // Original behavior - just return active rides
+      yield* _db
+          .collection('ride_offers')
+          .where('status', isEqualTo: 'active')
+          .orderBy('pickupDate')
+          .snapshots()
+          .map((snapshot) => snapshot.docs
+                  .map((doc) => RideOffer.fromFirestore(doc))
+                  .where((offer) {
+                // Filter out expired rides
+                if (_isRideOfferExpired(offer)) return false;
+
+                // If includeZeroSeats is true, include all rides
+                if (includeZeroSeats) return true;
+
+                // Otherwise, only include rides with available seats
+                return offer.availableSeats > 0;
+              }).toList());
+    } else {
+      // New behavior - include user's accepted matches even if inactive
+      await for (final activeSnapshot
+          in _db.collection('ride_offers').orderBy('pickupDate').snapshots()) {
+        // Get all active offers
+        final allOffers = activeSnapshot.docs
             .map((doc) => RideOffer.fromFirestore(doc))
             .where((offer) => !_isRideOfferExpired(offer))
-            .toList());
+            .toList();
+
+        // Get user's accepted matches
+        final matchesSnapshot = await _db
+            .collection('ride_matches')
+            .where('passengerUserId', isEqualTo: userId)
+            .where('status', isEqualTo: 'accepted')
+            .get();
+
+        final acceptedOfferIds = matchesSnapshot.docs
+            .map((doc) => doc.data()['rideOfferId'] as String)
+            .toSet();
+
+        // Filter offers: show active with seats OR user's accepted matches
+        final filteredOffers = allOffers.where((offer) {
+          // If user has accepted match for this offer, always show it
+          if (acceptedOfferIds.contains(offer.id)) {
+            return true;
+          }
+
+          // Otherwise, only show if active and has seats
+          return offer.status == 'active' && offer.availableSeats > 0;
+        }).toList();
+
+        yield filteredOffers;
+      }
+    }
   }
 
   /// Gets ride offers for a specific user
@@ -165,13 +259,13 @@ class RideMatchingService {
         .where('userId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => RideOffer.fromFirestore(doc))
-            .toList());
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => RideOffer.fromFirestore(doc)).toList());
   }
 
   /// Updates a ride offer
-  Future<void> updateRideOffer(String offerId, Map<String, dynamic> updates) async {
+  Future<void> updateRideOffer(
+      String offerId, Map<String, dynamic> updates) async {
     await _db.collection('ride_offers').doc(offerId).update({
       ...updates,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -211,7 +305,7 @@ class RideMatchingService {
         yield [];
         return;
       }
-      
+
       yield* _db
           .collection('ride_requests')
           .where('rideOfferId', whereIn: offerIds)
@@ -287,35 +381,35 @@ class RideMatchingService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .asyncMap((snapshot) async {
-          final matches = snapshot.docs
-              .map((doc) => RideMatch.fromFirestore(doc))
-              .toList();
-          
-          // Filter out matches where the associated ride offer has expired
-          final validMatches = <RideMatch>[];
-          for (final match in matches) {
-            try {
-              final offerDoc = await _db.collection('ride_offers').doc(match.rideOfferId).get();
-              if (offerDoc.exists) {
-                final offer = RideOffer.fromFirestore(offerDoc);
-                // Only include matches where the ride offer hasn't expired
-                // OR matches that are already completed (keep completed matches for history)
-                if (!_isRideOfferExpired(offer) || match.status == 'completed') {
-                  validMatches.add(match);
-                }
-              } else {
-                // If ride offer doesn't exist, keep the match (might be deleted offer)
-                validMatches.add(match);
-              }
-            } catch (e) {
-              print('Error checking ride offer for match ${match.id}: $e');
-              // On error, keep the match to be safe
+      final matches =
+          snapshot.docs.map((doc) => RideMatch.fromFirestore(doc)).toList();
+
+      // Filter out matches where the associated ride offer has expired
+      final validMatches = <RideMatch>[];
+      for (final match in matches) {
+        try {
+          final offerDoc =
+              await _db.collection('ride_offers').doc(match.rideOfferId).get();
+          if (offerDoc.exists) {
+            final offer = RideOffer.fromFirestore(offerDoc);
+            // Only include matches where the ride offer hasn't expired
+            // OR matches that are already completed (keep completed matches for history)
+            if (!_isRideOfferExpired(offer) || match.status == 'completed') {
               validMatches.add(match);
             }
+          } else {
+            // If ride offer doesn't exist, keep the match (might be deleted offer)
+            validMatches.add(match);
           }
-          
-          return validMatches;
-        });
+        } catch (e) {
+          print('Error checking ride offer for match ${match.id}: $e');
+          // On error, keep the match to be safe
+          validMatches.add(match);
+        }
+      }
+
+      return validMatches;
+    });
   }
 
   /// Gets passenger ride matches (only upcoming rides)
@@ -326,35 +420,35 @@ class RideMatchingService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .asyncMap((snapshot) async {
-          final matches = snapshot.docs
-              .map((doc) => RideMatch.fromFirestore(doc))
-              .toList();
-          
-          // Filter out matches where the associated ride offer has expired
-          final validMatches = <RideMatch>[];
-          for (final match in matches) {
-            try {
-              final offerDoc = await _db.collection('ride_offers').doc(match.rideOfferId).get();
-              if (offerDoc.exists) {
-                final offer = RideOffer.fromFirestore(offerDoc);
-                // Only include matches where the ride offer hasn't expired
-                // OR matches that are already completed (keep completed matches for history)
-                if (!_isRideOfferExpired(offer) || match.status == 'completed') {
-                  validMatches.add(match);
-                }
-              } else {
-                // If ride offer doesn't exist, keep the match (might be deleted offer)
-                validMatches.add(match);
-              }
-            } catch (e) {
-              print('Error checking ride offer for match ${match.id}: $e');
-              // On error, keep the match to be safe
+      final matches =
+          snapshot.docs.map((doc) => RideMatch.fromFirestore(doc)).toList();
+
+      // Filter out matches where the associated ride offer has expired
+      final validMatches = <RideMatch>[];
+      for (final match in matches) {
+        try {
+          final offerDoc =
+              await _db.collection('ride_offers').doc(match.rideOfferId).get();
+          if (offerDoc.exists) {
+            final offer = RideOffer.fromFirestore(offerDoc);
+            // Only include matches where the ride offer hasn't expired
+            // OR matches that are already completed (keep completed matches for history)
+            if (!_isRideOfferExpired(offer) || match.status == 'completed') {
               validMatches.add(match);
             }
+          } else {
+            // If ride offer doesn't exist, keep the match (might be deleted offer)
+            validMatches.add(match);
           }
-          
-          return validMatches;
-        });
+        } catch (e) {
+          print('Error checking ride offer for match ${match.id}: $e');
+          // On error, keep the match to be safe
+          validMatches.add(match);
+        }
+      }
+
+      return validMatches;
+    });
   }
 
   /// Updates a ride match status
@@ -366,7 +460,8 @@ class RideMatchingService {
   }
 
   /// Accepts a ride match with driver contact info
-  Future<void> acceptRideMatch(String matchId, {
+  Future<void> acceptRideMatch(
+    String matchId, {
     required String driverContact,
     required String driverPickupLocation,
     required String driverPickupTime,
@@ -374,10 +469,10 @@ class RideMatchingService {
     // Get the match details first
     final matchDoc = await _db.collection('ride_matches').doc(matchId).get();
     if (!matchDoc.exists) return;
-    
+
     final matchData = matchDoc.data()!;
     final rideOfferId = matchData['rideOfferId'] as String;
-    
+
     // Update the match status
     await _db.collection('ride_matches').doc(matchId).update({
       'status': 'accepted',
@@ -386,7 +481,7 @@ class RideMatchingService {
       'driverPickupTime': driverPickupTime,
       'updatedAt': FieldValue.serverTimestamp(),
     });
-    
+
     // Update available seats (assuming 1 seat is requested)
     await updateAvailableSeats(rideOfferId, 1);
   }
@@ -398,11 +493,11 @@ class RideMatchingService {
     if (matchDoc.exists) {
       final matchData = matchDoc.data()!;
       final rideOfferId = matchData['rideOfferId'] as String;
-      
+
       // Restore 1 seat (assuming 1 seat was requested)
       await restoreAvailableSeats(rideOfferId, 1);
     }
-    
+
     await updateRideMatchStatus(matchId, 'rejected');
   }
 
@@ -412,7 +507,8 @@ class RideMatchingService {
   }
 
   /// Updates passenger contact info
-  Future<void> updatePassengerContact(String matchId, {
+  Future<void> updatePassengerContact(
+    String matchId, {
     required String passengerName,
     required String passengerContact,
   }) async {
@@ -424,19 +520,21 @@ class RideMatchingService {
   }
 
   /// Updates available seats when a request is accepted
-  Future<void> updateAvailableSeats(String rideOfferId, int seatsRequested) async {
+  Future<void> updateAvailableSeats(
+      String rideOfferId, int seatsRequested) async {
     try {
-      final offerDoc = await _db.collection('ride_offers').doc(rideOfferId).get();
+      final offerDoc =
+          await _db.collection('ride_offers').doc(rideOfferId).get();
       if (offerDoc.exists) {
         final currentSeats = offerDoc.data()!['availableSeats'] as int;
         final newSeats = currentSeats - seatsRequested;
-        
+
         if (newSeats >= 0) {
           await _db.collection('ride_offers').doc(rideOfferId).update({
             'availableSeats': newSeats,
             'updatedAt': FieldValue.serverTimestamp(),
           });
-          
+
           // If no seats left, mark the offer as inactive
           if (newSeats == 0) {
             await _db.collection('ride_offers').doc(rideOfferId).update({
@@ -445,7 +543,8 @@ class RideMatchingService {
             });
           }
         } else {
-          print('Warning: Not enough seats available. Requested: $seatsRequested, Available: $currentSeats');
+          print(
+              'Warning: Not enough seats available. Requested: $seatsRequested, Available: $currentSeats');
         }
       }
     } catch (e) {
@@ -455,13 +554,15 @@ class RideMatchingService {
   }
 
   /// Restores available seats when a request is rejected or cancelled
-  Future<void> restoreAvailableSeats(String rideOfferId, int seatsToRestore) async {
+  Future<void> restoreAvailableSeats(
+      String rideOfferId, int seatsToRestore) async {
     try {
-      final offerDoc = await _db.collection('ride_offers').doc(rideOfferId).get();
+      final offerDoc =
+          await _db.collection('ride_offers').doc(rideOfferId).get();
       if (offerDoc.exists) {
         final currentSeats = offerDoc.data()!['availableSeats'] as int;
         final newSeats = currentSeats + seatsToRestore;
-        
+
         await _db.collection('ride_offers').doc(rideOfferId).update({
           'availableSeats': newSeats,
           'status': 'active', // Reactivate the offer if it was inactive
@@ -477,10 +578,10 @@ class RideMatchingService {
   // --- KNN-BASED RECOMMENDATIONS ---
 
   /// Finds similar rides using KNN algorithm
-  /// 
+  ///
   /// [queryRide] The ride to find similar rides for
   /// [allRides] List of all available rides to search from
-  /// 
+  ///
   /// Returns a list of similar rides sorted by similarity score (highest first)
   List<RideSimilarityResult> findSimilarRides(
     RideOffer queryRide,
@@ -490,7 +591,7 @@ class RideMatchingService {
   }
 
   /// Gets recommended rides for a user using KNN
-  /// 
+  ///
   /// Fetches all active rides and returns the most similar ones to rides
   /// the user has previously shown interest in
   Future<List<RideOffer>> getRecommendedRides(String userId) async {
@@ -498,9 +599,7 @@ class RideMatchingService {
       print('[KNN] getRecommendedRides for user: ' + userId);
       // Get ride offers (include docs without explicit status)
       // We filter in-memory to keep 'active' and missing-status offers
-      final offersSnapshot = await _db
-          .collection('ride_offers')
-          .get();
+      final offersSnapshot = await _db.collection('ride_offers').get();
 
       final allRides = offersSnapshot.docs
           .map((doc) => RideOffer.fromFirestore(doc))
@@ -516,7 +615,8 @@ class RideMatchingService {
           .where('userId', isEqualTo: userId)
           .limit(5)
           .get();
-      print('[KNN] user ride_requests count: ' + userRequestsSnapshot.docs.length.toString());
+      print('[KNN] user ride_requests count: ' +
+          userRequestsSnapshot.docs.length.toString());
 
       if (userRequestsSnapshot.docs.isEmpty) {
         // If user has no previous requests, return all rides
@@ -528,7 +628,8 @@ class RideMatchingService {
       for (final requestDoc in userRequestsSnapshot.docs) {
         final rideOfferId = requestDoc.data()['rideOfferId'] as String;
         try {
-          final offerDoc = await _db.collection('ride_offers').doc(rideOfferId).get();
+          final offerDoc =
+              await _db.collection('ride_offers').doc(rideOfferId).get();
           if (offerDoc.exists) {
             userRides.add(RideOffer.fromFirestore(offerDoc));
           }
@@ -536,7 +637,8 @@ class RideMatchingService {
           print('Error fetching ride offer: $e');
         }
       }
-      print('[KNN] user referenced rides fetched: ' + userRides.length.toString());
+      print('[KNN] user referenced rides fetched: ' +
+          userRides.length.toString());
 
       if (userRides.isEmpty) {
         return allRides.take(10).toList();
@@ -545,22 +647,21 @@ class RideMatchingService {
       // Use the most recent user ride as the query
       final queryRide = userRides.first;
       print('[KNN] queryRide id: ' + queryRide.id);
-      
+
       // Find similar rides using KNN
       final similarRides = _knnService.findSimilarRides(queryRide, allRides);
       print('[KNN] similarRides found: ' + similarRides.length.toString());
-      
+
       // Return the ride offers from similarity results
       final results = similarRides.map((result) => result.ride).toList();
 
       // Fallback: if no neighbors (e.g., only 1 ride available which equals query),
       // return a few other rides so the section isn't empty.
       if (results.isEmpty) {
-        final fallback = allRides
-            .where((r) => r.id != queryRide.id)
-            .take(5)
-            .toList();
-        print('[KNN] using fallback recommendations count: ' + fallback.length.toString());
+        final fallback =
+            allRides.where((r) => r.id != queryRide.id).take(5).toList();
+        print('[KNN] using fallback recommendations count: ' +
+            fallback.length.toString());
         return fallback;
       }
 

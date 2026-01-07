@@ -22,7 +22,8 @@ class FirestoreService {
     try {
       final docSnapshot = await _db.collection('users').doc(uid).get();
       // This checks for a 'preferences' map inside the user document.
-      if (docSnapshot.exists && docSnapshot.data()!.containsKey('preferences')) {
+      if (docSnapshot.exists &&
+          docSnapshot.data()!.containsKey('preferences')) {
         return docSnapshot.data()!['preferences'] as Map<String, dynamic>;
       }
       return null;
@@ -33,7 +34,8 @@ class FirestoreService {
   }
 
   /// Saves or updates a user's travel preferences.
-  Future<void> setUserPreferences(String uid, Map<String, dynamic> preferences) async {
+  Future<void> setUserPreferences(
+      String uid, Map<String, dynamic> preferences) async {
     try {
       // We use 'set' with 'merge: true' to create the field if it doesn't exist,
       // or update it without overwriting other user data.
@@ -80,7 +82,10 @@ class FirestoreService {
 
   /// Gets a real-time stream of ALL trips from all users for the admin dashboard.
   Stream<QuerySnapshot> getAllTrips() {
-    return _db.collection('trips').orderBy('createdAt', descending: true).snapshots();
+    return _db
+        .collection('trips')
+        .orderBy('createdAt', descending: true)
+        .snapshots();
   }
 
   /// Allows an admin to delete a specific trip document.

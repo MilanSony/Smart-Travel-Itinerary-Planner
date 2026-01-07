@@ -13,6 +13,7 @@ import 'notifications_screen.dart';
 import 'plan_trip_screen.dart';
 import 'profile_page.dart';
 import 'ride_matching_screen.dart';
+import 'group_trips_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,10 +29,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Your list of pages for the body is correct
   List<Widget> get _pages => <Widget>[
-    DashboardPage(onNavigateToTrips: () => _onDrawerItemTapped(1)),
-    MyTripsPage(),
-    ProfilePage(),
-  ];
+        DashboardPage(onNavigateToTrips: () => _onDrawerItemTapped(1)),
+        MyTripsPage(),
+        ProfilePage(),
+      ];
 
   void _onDrawerItemTapped(int index) {
     setState(() {
@@ -71,7 +72,8 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_none),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const NotificationsScreen())),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (context) => const NotificationsScreen())),
             tooltip: 'Notifications',
           ),
           IconButton(
@@ -86,8 +88,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: GradientBackground(
           child: Theme(
             data: theme.copyWith(
-              // Your custom drawer theme is correct
-            ),
+                // Your custom drawer theme is correct
+                ),
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
@@ -100,20 +102,27 @@ class _HomeScreenState extends State<HomeScreen> {
                       CircleAvatar(
                         radius: 30,
                         backgroundColor: theme.cardColor,
-                        backgroundImage: _currentUser?.photoURL != null ? NetworkImage(_currentUser!.photoURL!) : null,
+                        backgroundImage: _currentUser?.photoURL != null
+                            ? NetworkImage(_currentUser!.photoURL!)
+                            : null,
                         child: _currentUser?.photoURL == null
-                            ? Icon(Icons.person, size: 30, color: theme.primaryColor)
+                            ? Icon(Icons.person,
+                                size: 30, color: theme.primaryColor)
                             : null,
                       ),
                       const SizedBox(height: 8),
                       Text(
                         _currentUser?.displayName ?? 'Welcome, Traveller!',
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _currentUser?.email ?? '',
-                        style: TextStyle(fontSize: 14, color: isDarkMode ? Colors.white70 : Colors.black54),
+                        style: TextStyle(
+                            fontSize: 14,
+                            color:
+                                isDarkMode ? Colors.white70 : Colors.black54),
                       ),
                     ],
                   ),
@@ -134,7 +143,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: () {
                     Navigator.of(context).pop(); // Close drawer
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => const RideMatchingScreen()),
                     );
                   },
                 ),
@@ -158,8 +168,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     // all screens behind it, so the user can't press "back" to get in.
                     if (mounted) {
                       Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (context) => const AuthGate()),
-                            (Route<dynamic> route) => false, // This condition removes all previous routes.
+                        MaterialPageRoute(
+                            builder: (context) => const AuthGate()),
+                        (Route<dynamic> route) =>
+                            false, // This condition removes all previous routes.
                       );
                     }
                   },
@@ -170,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       body: Center(
-          child: _pages.elementAt(_currentPageIndex),
+        child: _pages.elementAt(_currentPageIndex),
       ),
     );
   }
@@ -179,7 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
 // --- Modern Professional Dashboard Design ---
 class DashboardPage extends StatelessWidget {
   final VoidCallback? onNavigateToTrips;
-  
+
   const DashboardPage({super.key, this.onNavigateToTrips});
 
   @override
@@ -189,10 +201,11 @@ class DashboardPage extends StatelessWidget {
     final userName = () {
       final displayName = user?.displayName?.trim();
       if (displayName == null || displayName.isEmpty) return 'Traveler';
-      final parts = displayName.split(' ').where((part) => part.isNotEmpty).toList();
+      final parts =
+          displayName.split(' ').where((part) => part.isNotEmpty).toList();
       return parts.isNotEmpty ? parts.first : displayName;
     }();
-    
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -270,10 +283,12 @@ class DashboardPage extends StatelessWidget {
                         child: ElevatedButton.icon(
                           onPressed: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (context) => const PlanTripScreen()),
+                              MaterialPageRoute(
+                                  builder: (context) => const PlanTripScreen()),
                             );
                           },
-                          icon: const Icon(Icons.add_circle_outline_rounded, size: 24, color: Colors.white),
+                          icon: const Icon(Icons.add_circle_outline_rounded,
+                              size: 24, color: Colors.white),
                           label: const Text(
                             'Plan a New Trip',
                             style: TextStyle(
@@ -284,7 +299,8 @@ class DashboardPage extends StatelessWidget {
                           ),
                           style: ElevatedButton.styleFrom(
                             minimumSize: const Size(320, 60),
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 18),
                             backgroundColor: const Color(0xFF4C74E0),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
@@ -301,10 +317,13 @@ class DashboardPage extends StatelessWidget {
                         child: ElevatedButton.icon(
                           onPressed: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (context) => const RideMatchingScreen()),
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const RideMatchingScreen()),
                             );
                           },
-                          icon: const Icon(Icons.directions_car_rounded, size: 24, color: Colors.white),
+                          icon: const Icon(Icons.directions_car_rounded,
+                              size: 24, color: Colors.white),
                           label: const Text(
                             'Find or Offer Rides',
                             style: TextStyle(
@@ -315,8 +334,44 @@ class DashboardPage extends StatelessWidget {
                           ),
                           style: ElevatedButton.styleFrom(
                             minimumSize: const Size(320, 60),
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 18),
                             backgroundColor: const Color(0xFF26A69A),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            elevation: 8,
+                            shadowColor: Colors.black.withOpacity(0.3),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: 320,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const GroupTripsScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.group_rounded,
+                              size: 24, color: Colors.white),
+                          label: const Text(
+                            'Group Trips',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(320, 60),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 18),
+                            backgroundColor: const Color(0xFF9C27B0),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(20),
@@ -331,14 +386,15 @@ class DashboardPage extends StatelessWidget {
                 ),
                 const Spacer(),
                 // Recent Trips Section at bottom with medium size
-                if (user != null) _RecentTripsSection(
-                  userId: user.uid,
-                  onNavigateToTrips: onNavigateToTrips,
-                ),
+                if (user != null)
+                  _RecentTripsSection(
+                    userId: user.uid,
+                    onNavigateToTrips: onNavigateToTrips,
+                  ),
                 const SizedBox(height: 24),
-          ],
-        ),
-      ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -358,7 +414,7 @@ class _RecentTripsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     final tripsStream = FirebaseFirestore.instance
         .collection('trips')
         .where('userId', isEqualTo: userId)
@@ -391,15 +447,17 @@ class _RecentTripsSection extends StatelessWidget {
 
         final tripDoc = docs.first;
         final data = tripDoc.data() as Map<String, dynamic>;
-        
+
         // Extract trip data with validation
-        final destination = data['destination'] as String? ?? 'Unknown Destination';
+        final destination =
+            data['destination'] as String? ?? 'Unknown Destination';
         final title = data['title'] as String? ?? 'My Trip';
         final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
         final duration = data['durationInDays'] as int?;
         final interests = (data['interests'] as List?)?.cast<String>() ?? [];
         final summary = data['summary'] as Map<String, dynamic>?;
-        final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? [];
+        final previewActivities =
+            (summary?['previewActivities'] as List?)?.cast<String>() ?? [];
         final totalEstimatedCost = summary?['totalEstimatedCost'];
         final days = summary?['days'] as int?;
 
@@ -417,28 +475,29 @@ class _RecentTripsSection extends StatelessWidget {
                 Text(
                   'Recent Trip',
                   style: theme.textTheme.titleLarge?.copyWith(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    shadows: const [
-                      Shadow(
-                        color: Colors.black54,
-                        offset: Offset(0, 2),
-                        blurRadius: 4,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black54,
+                            offset: Offset(0, 2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ) ??
+                      const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black54,
+                            offset: Offset(0, 2),
+                            blurRadius: 4,
+                          ),
+                        ],
                       ),
-                    ],
-                  ) ?? const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black54,
-                        offset: Offset(0, 2),
-                        blurRadius: 4,
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ),
@@ -446,7 +505,8 @@ class _RecentTripsSection extends StatelessWidget {
             InkWell(
               onTap: () {
                 // Show trip details dialog
-                _RecentTripsSection._showTripDetailsDialog(context, data, theme, onNavigateToTrips);
+                _RecentTripsSection._showTripDetailsDialog(
+                    context, data, theme, onNavigateToTrips);
               },
               borderRadius: BorderRadius.circular(20),
               child: Container(
@@ -479,14 +539,15 @@ class _RecentTripsSection extends StatelessWidget {
                               Text(
                                 title,
                                 style: theme.textTheme.titleLarge?.copyWith(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF1E3A5F),
-                                ) ?? const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1E3A5F),
-                                ),
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFF1E3A5F),
+                                    ) ??
+                                    const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1E3A5F),
+                                    ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -502,15 +563,17 @@ class _RecentTripsSection extends StatelessWidget {
                                   Flexible(
                                     child: Text(
                                       destination,
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        fontSize: 14,
-                                        color: Colors.grey[700],
-                                        fontWeight: FontWeight.w500,
-                                      ) ?? TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey[700],
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
+                                                fontSize: 14,
+                                                color: Colors.grey[700],
+                                                fontWeight: FontWeight.w500,
+                                              ) ??
+                                              TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.grey[700],
+                                                fontWeight: FontWeight.w500,
+                                              ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -521,7 +584,8 @@ class _RecentTripsSection extends StatelessWidget {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
                             color: const Color(0xFF4C74E0).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
@@ -570,43 +634,45 @@ class _RecentTripsSection extends StatelessWidget {
                       Text(
                         'Highlights',
                         style: theme.textTheme.titleSmall?.copyWith(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[700],
-                        ) ?? TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[700],
-                        ),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ) ??
+                            TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ),
                       ),
                       const SizedBox(height: 6),
                       ...previewActivities.take(2).map((activity) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline_rounded,
-                              size: 14,
-                              color: const Color(0xFF26A69A),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                activity,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ) ?? TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle_outline_rounded,
+                                  size: 14,
+                                  color: const Color(0xFF26A69A),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    activity,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ) ??
+                                        TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      )),
+                          )),
                     ],
                     const SizedBox(height: 12),
                     // View details button
@@ -628,14 +694,15 @@ class _RecentTripsSection extends StatelessWidget {
                           Text(
                             'View Full Details',
                             style: theme.textTheme.titleSmall?.copyWith(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ) ?? const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ) ??
+                                const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
                           ),
                           const SizedBox(width: 6),
                           const Icon(
@@ -674,7 +741,11 @@ class _RecentTripsSection extends StatelessWidget {
     }
   }
 
-  static void _showTripDetailsDialog(BuildContext context, Map<String, dynamic> data, ThemeData theme, VoidCallback? onNavigateToTrips) {
+  static void _showTripDetailsDialog(
+      BuildContext context,
+      Map<String, dynamic> data,
+      ThemeData theme,
+      VoidCallback? onNavigateToTrips) {
     final destination = data['destination'] as String? ?? 'Unknown Destination';
     final title = data['title'] as String? ?? 'My Trip';
     final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
@@ -682,7 +753,8 @@ class _RecentTripsSection extends StatelessWidget {
     final interests = (data['interests'] as List?)?.cast<String>() ?? [];
     final budget = data['budget'] as String?;
     final summary = data['summary'] as Map<String, dynamic>?;
-    final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? [];
+    final previewActivities =
+        (summary?['previewActivities'] as List?)?.cast<String>() ?? [];
     final totalEstimatedCost = summary?['totalEstimatedCost'];
     final days = summary?['days'] as int?;
 
@@ -712,14 +784,15 @@ class _RecentTripsSection extends StatelessWidget {
                             Text(
                               title,
                               style: theme.textTheme.headlineSmall?.copyWith(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: const Color(0xFF1E3A5F),
-                              ) ?? const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E3A5F),
-                              ),
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF1E3A5F),
+                                  ) ??
+                                  const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1E3A5F),
+                                  ),
                             ),
                             const SizedBox(height: 8),
                             Row(
@@ -733,15 +806,17 @@ class _RecentTripsSection extends StatelessWidget {
                                 Expanded(
                                   child: Text(
                                     destination,
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      fontSize: 18,
-                                      color: Colors.grey[700],
-                                      fontWeight: FontWeight.w500,
-                                    ) ?? TextStyle(
-                                      fontSize: 18,
-                                      color: Colors.grey[700],
-                                      fontWeight: FontWeight.w500,
-                                    ),
+                                    style:
+                                        theme.textTheme.titleMedium?.copyWith(
+                                              fontSize: 18,
+                                              color: Colors.grey[700],
+                                              fontWeight: FontWeight.w500,
+                                            ) ??
+                                            TextStyle(
+                                              fontSize: 18,
+                                              color: Colors.grey[700],
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                   ),
                                 ),
                               ],
@@ -787,7 +862,8 @@ class _RecentTripsSection extends StatelessWidget {
                       '₹$budget',
                       Colors.orange[700]!,
                     ),
-                  if (budget != null && budget.isNotEmpty) const SizedBox(height: 12),
+                  if (budget != null && budget.isNotEmpty)
+                    const SizedBox(height: 12),
                   if (totalEstimatedCost != null)
                     _RecentTripsSection._buildDetailRow(
                       context,
@@ -812,42 +888,44 @@ class _RecentTripsSection extends StatelessWidget {
                     Text(
                       'Trip Highlights',
                       style: theme.textTheme.titleLarge?.copyWith(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF1E3A5F),
-                      ) ?? const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A5F),
-                      ),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1E3A5F),
+                          ) ??
+                          const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E3A5F),
+                          ),
                     ),
                     const SizedBox(height: 12),
                     ...previewActivities.map((activity) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.check_circle_rounded,
-                            size: 20,
-                            color: const Color(0xFF26A69A),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              activity,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontSize: 15,
-                                color: Colors.grey[700],
-                              ) ?? TextStyle(
-                                fontSize: 15,
-                                color: Colors.grey[700],
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.check_circle_rounded,
+                                size: 20,
+                                color: const Color(0xFF26A69A),
                               ),
-                            ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  activity,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                        fontSize: 15,
+                                        color: Colors.grey[700],
+                                      ) ??
+                                      TextStyle(
+                                        fontSize: 15,
+                                        color: Colors.grey[700],
+                                      ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    )),
+                        )),
                   ],
                   const SizedBox(height: 24),
                   // Action button
@@ -908,27 +986,29 @@ class _RecentTripsSection extends StatelessWidget {
               Text(
                 label,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ) ?? TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ) ??
+                    TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
               ),
               const SizedBox(height: 4),
               Text(
                 value,
                 style: theme.textTheme.bodyLarge?.copyWith(
-                  fontSize: 16,
-                  color: Colors.grey[900],
-                  fontWeight: FontWeight.w600,
-                ) ?? const TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.w600,
-                ),
+                      fontSize: 16,
+                      color: Colors.grey[900],
+                      fontWeight: FontWeight.w600,
+                    ) ??
+                    const TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
             ],
           ),
@@ -1110,7 +1190,7 @@ class _ModernDestinationCard extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             // Large decorative icon in background
             Positioned(
               top: -30,
@@ -1120,14 +1200,14 @@ class _ModernDestinationCard extends StatelessWidget {
                 child: Icon(icon, size: 150, color: Colors.white),
               ),
             ),
-            
+
             // Small decorative dots pattern
             Positioned.fill(
               child: CustomPaint(
                 painter: _DotsPatternPainter(),
               ),
             ),
-            
+
             // Content
             Padding(
               padding: const EdgeInsets.all(20),
@@ -1171,9 +1251,9 @@ class _ModernDestinationCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const Spacer(),
-                  
+
                   // Destination info
                   Text(
                     title,
@@ -1208,10 +1288,11 @@ class _ModernDestinationCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Price and days row
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.25),
                       borderRadius: BorderRadius.circular(16),
@@ -1254,7 +1335,8 @@ class _ModernDestinationCard extends StatelessWidget {
                           ],
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(10),
@@ -1310,7 +1392,7 @@ class MyTripsPage extends StatelessWidget {
     if (user == null) {
       return GradientBackground(
         child: const SafeArea(
-        child: Center(child: Text('Please sign in to view your trips.')),
+          child: Center(child: Text('Please sign in to view your trips.')),
         ),
       );
     }
@@ -1325,47 +1407,50 @@ class MyTripsPage extends StatelessWidget {
       imagePath: 'assets/backgrounds/my_trips_bg.jpg',
       overlayOpacity: 0.3,
       child: SafeArea(
-      child: StreamBuilder<QuerySnapshot>(
-        stream: tripsStream,
-        builder: (context, snapshot) {
-          print('My Trips - User ID: ${user.uid}');
-          print('My Trips - Connection state: ${snapshot.connectionState}');
-          print('My Trips - Has error: ${snapshot.hasError}');
-          print('My Trips - Error: ${snapshot.error}');
-          print('My Trips - Data: ${snapshot.data}');
+        child: StreamBuilder<QuerySnapshot>(
+          stream: tripsStream,
+          builder: (context, snapshot) {
+            print('My Trips - User ID: ${user.uid}');
+            print('My Trips - Connection state: ${snapshot.connectionState}');
+            print('My Trips - Has error: ${snapshot.hasError}');
+            print('My Trips - Error: ${snapshot.error}');
+            print('My Trips - Data: ${snapshot.data}');
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            print('My Trips - Error details: ${snapshot.error}');
-            return Center(child: Text('Failed to load trips: ${snapshot.error}'));
-          }
-          final docs = snapshot.data?.docs ?? [];
-          print('My Trips - Number of docs: ${docs.length}');
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              print('My Trips - Error details: ${snapshot.error}');
+              return Center(
+                  child: Text('Failed to load trips: ${snapshot.error}'));
+            }
+            final docs = snapshot.data?.docs ?? [];
+            print('My Trips - Number of docs: ${docs.length}');
 
-          if (docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('No trips yet'),
-                  const SizedBox(height: 12),
-                  Text('User ID: ${user.uid}', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const PlanTripScreen()),
-                      );
-                    },
-                    icon: const Icon(Icons.add),
-                    label: const Text('Plan a New Trip'),
-                  ),
-                ],
-              ),
-            );
-          }
+            if (docs.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('No trips yet'),
+                    const SizedBox(height: 12),
+                    Text('User ID: ${user.uid}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (context) => const PlanTripScreen()),
+                        );
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Plan a New Trip'),
+                    ),
+                  ],
+                ),
+              );
+            }
 
             // Build TripLite list and compute KNN recommendations
             List<TripSimilarityResult> tripRecommendations = [];
@@ -1374,32 +1459,36 @@ class MyTripsPage extends StatelessWidget {
                 final data = doc.data() as Map<String, dynamic>;
                 return TripLite(
                   id: data['id'] as String? ?? doc.id,
-                  destination: (data['destination'] as String?)?.trim() ?? 'Unknown',
+                  destination:
+                      (data['destination'] as String?)?.trim() ?? 'Unknown',
                   durationInDays: data['durationInDays'] as int?,
-                  interests: ((data['interests'] as List?)?.cast<String>()) ?? const [],
+                  interests: ((data['interests'] as List?)?.cast<String>()) ??
+                      const [],
                   budget: data['budget'] as String?,
                   createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
                 );
               }).toList();
 
               if (tripsLite.isNotEmpty) {
-                tripsLite.sort((a, b) =>
-                    (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+                tripsLite.sort((a, b) => (b.createdAt ?? DateTime(0))
+                    .compareTo(a.createdAt ?? DateTime(0)));
                 final queryTrip = tripsLite.first;
-                tripRecommendations = TripKnnService(k: 3).findSimilarTrips(queryTrip, tripsLite);
+                tripRecommendations =
+                    TripKnnService(k: 3).findSimilarTrips(queryTrip, tripsLite);
               }
             } catch (_) {
               tripRecommendations = [];
-          }
+            }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(12),
+            return ListView.separated(
+              padding: const EdgeInsets.all(12),
               itemCount: docs.length + (tripRecommendations.isNotEmpty ? 1 : 0),
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
                 if (tripRecommendations.isNotEmpty && index == 0) {
                   return Card(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
                     elevation: 4,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -1437,52 +1526,60 @@ class MyTripsPage extends StatelessWidget {
                   );
                 }
 
-                final adjustedIndex = tripRecommendations.isNotEmpty ? index - 1 : index;
+                final adjustedIndex =
+                    tripRecommendations.isNotEmpty ? index - 1 : index;
                 final data = docs[adjustedIndex].data() as Map<String, dynamic>;
-              final destination = data['destination'] as String? ?? 'Unknown';
-              final title = data['title'] as String? ?? 'Trip';
-              final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
-              final duration = data['durationInDays'];
-              final interests = (data['interests'] as List?)?.cast<String>() ?? const [];
-              final summary = data['summary'] as Map<String, dynamic>?;
-              final previewActivities = (summary?['previewActivities'] as List?)?.cast<String>() ?? const [];
-              final totalEstimatedCost = summary?['totalEstimatedCost'];
+                final destination = data['destination'] as String? ?? 'Unknown';
+                final title = data['title'] as String? ?? 'Trip';
+                final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+                final duration = data['durationInDays'];
+                final interests =
+                    (data['interests'] as List?)?.cast<String>() ?? const [];
+                final summary = data['summary'] as Map<String, dynamic>?;
+                final previewActivities =
+                    (summary?['previewActivities'] as List?)?.cast<String>() ??
+                        const [];
+                final totalEstimatedCost = summary?['totalEstimatedCost'];
 
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.card_travel_outlined),
-                  title: Text(title),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(destination),
-                      if (duration != null) Text('Duration: $duration days'),
-                      if (interests.isNotEmpty) Text('Interests: ${interests.join(', ')}'),
-                      if (previewActivities.isNotEmpty) Text('Highlights: ${previewActivities.join(' · ')}'),
-                      if (totalEstimatedCost != null) Text('Est. cost: ₹$totalEstimatedCost'),
-                      if (createdAt != null) Text('Created: ${createdAt.toLocal()}'),
-                    ],
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.card_travel_outlined),
+                    title: Text(title),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(destination),
+                        if (duration != null) Text('Duration: $duration days'),
+                        if (interests.isNotEmpty)
+                          Text('Interests: ${interests.join(', ')}'),
+                        if (previewActivities.isNotEmpty)
+                          Text('Highlights: ${previewActivities.join(' · ')}'),
+                        if (totalEstimatedCost != null)
+                          Text('Est. cost: ₹$totalEstimatedCost'),
+                        if (createdAt != null)
+                          Text('Created: ${createdAt.toLocal()}'),
+                      ],
+                    ),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: Text(title),
+                          content: Text('Destination: $destination'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Close'),
+                            )
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: Text(title),
-                        content: Text('Destination: $destination'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Close'),
-                          )
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            );
+          },
         ),
       ),
     );

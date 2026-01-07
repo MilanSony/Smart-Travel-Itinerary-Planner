@@ -117,7 +117,7 @@ class _RideMatchCardState extends State<_RideMatchCard> {
         driverPickupLocation: contactInfo['pickupLocation']!,
         driverPickupTime: contactInfo['pickupTime']!,
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -145,30 +145,34 @@ class _RideMatchCardState extends State<_RideMatchCard> {
   }
 
   /// Generates and sends vehicle entry OTP to passenger's email
+  /// Passenger will enter the OTP in their app to verify
   Future<void> _verifyPassengerEntry() async {
     setState(() {
       _isProcessing = true;
     });
 
     try {
-      // Generate and send OTP to passenger's email
-      final otp = await _rideService.generateAndSendVehicleEntryOTP(
+      // Generate and send OTP to passenger's email/app
+      await _rideService.generateAndSendVehicleEntryOTP(
         widget.match.id,
         widget.match.passengerEmail,
       );
 
       if (mounted) {
-        // Show OTP to driver (in production, OTP is sent via email)
+        // Notify driver that OTP was sent to passenger
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('OTP sent to ${widget.match.passengerEmail}. OTP: $otp (Passenger will share this with you)'),
-            backgroundColor: Colors.blue,
+            content: Text('✅ OTP sent to ${widget.match.passengerEmail}!\n'
+                'Passenger will enter the OTP in their app to verify.'),
+            backgroundColor: Colors.green,
             duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
           ),
         );
-
-        // Show dialog for driver to enter OTP that passenger shares
-        await _showVehicleEntryOTPDialog(widget.match.id);
       }
     } catch (e) {
       if (mounted) {
@@ -187,151 +191,6 @@ class _RideMatchCardState extends State<_RideMatchCard> {
       }
     }
   }
-
-  /// Shows dialog for driver to enter OTP that passenger shares
-  Future<void> _showVehicleEntryOTPDialog(String matchId) async {
-    final otpController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    bool isVerifying = false;
-    bool? verificationResult;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.verified_user, color: Colors.green),
-              SizedBox(width: 8),
-              Text('Verify Passenger Entry'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green[200]!),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'An OTP has been sent to the passenger\'s email. Ask the passenger to share the 6-digit OTP they received:',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: otpController,
-                  enabled: !isVerifying && verificationResult != true,
-                  decoration: const InputDecoration(
-                    labelText: 'Enter OTP Shared by Passenger *',
-                    hintText: '000000',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock),
-                  ),
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  buildCounter: (context, {required currentLength, required isFocused, maxLength}) => 
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text('$currentLength / $maxLength digits'),
-                    ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'OTP is required';
-                    }
-                    if (value.trim().length != 6) {
-                      return 'OTP must be 6 digits';
-                    }
-                    if (!RegExp(r'^\d+$').hasMatch(value.trim())) {
-                      return 'OTP must contain only digits';
-                    }
-                    return null;
-                  },
-                ),
-                if (isVerifying) ...[
-                  const SizedBox(height: 16),
-                  const Center(child: CircularProgressIndicator()),
-                ],
-                if (verificationResult == true) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green[100],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.green),
-                        SizedBox(width: 8),
-                        Text('Verified! Passenger can enter the vehicle.'),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            if (verificationResult != true) ...[
-              if (!isVerifying)
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-              ElevatedButton(
-                onPressed: isVerifying ? null : () async {
-                  if (formKey.currentState!.validate()) {
-                    setState(() => isVerifying = true);
-                    // Verify the OTP
-                    final isValid = await _rideService.verifyVehicleEntryOTP(matchId, otpController.text.trim());
-                    setState(() {
-                      isVerifying = false;
-                      verificationResult = isValid;
-                    });
-                    
-                    if (isValid && context.mounted) {
-                      await Future.delayed(const Duration(milliseconds: 500));
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Passenger verified! They can now enter the vehicle.'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    } else if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Invalid OTP. Please ask passenger for the correct OTP.'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-                child: const Text('Verify OTP'),
-              ),
-            ] else ...[
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Done'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
 
   Future<void> _rejectMatch() async {
     setState(() {
@@ -378,7 +237,8 @@ class _RideMatchCardState extends State<_RideMatchCard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('🎉 Ride completed successfully! Thank you for using our service.'),
+            content: Text(
+                '🎉 Ride completed successfully! Thank you for using our service.'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
@@ -402,7 +262,6 @@ class _RideMatchCardState extends State<_RideMatchCard> {
     }
   }
 
-
   Future<Map<String, String>?> _showContactInfoDialog() async {
     final contactController = TextEditingController();
     final pickupLocationController = TextEditingController();
@@ -425,7 +284,8 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                     children: [
                       const Text(
                         'Share Your Contact Info',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),
@@ -443,11 +303,14 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                     ),
                     keyboardType: TextInputType.phone,
                     maxLength: 10,
-                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => 
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text('$currentLength / $maxLength digits'),
-                      ),
+                    buildCounter: (context,
+                            {required currentLength,
+                            required isFocused,
+                            maxLength}) =>
+                        Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text('$currentLength / $maxLength digits'),
+                    ),
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Required';
@@ -478,11 +341,14 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                       }
                       // Check if the entered value matches any valid place
                       final enteredValue = value.trim();
-                      final isInvalid = !validPlaces.any(
-                        (place) => place.toLowerCase() == enteredValue.toLowerCase() ||
-                                   place.toLowerCase().contains(enteredValue.toLowerCase()) ||
-                                   enteredValue.toLowerCase().contains(place.toLowerCase())
-                      );
+                      final isInvalid = !validPlaces.any((place) =>
+                          place.toLowerCase() == enteredValue.toLowerCase() ||
+                          place
+                              .toLowerCase()
+                              .contains(enteredValue.toLowerCase()) ||
+                          enteredValue
+                              .toLowerCase()
+                              .contains(place.toLowerCase()));
                       if (isInvalid) {
                         return 'Invalid place. Enter a valid place in India';
                       }
@@ -518,7 +384,8 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                           if (formKey.currentState!.validate()) {
                             Navigator.pop(context, {
                               'contact': contactController.text.trim(),
-                              'pickupLocation': pickupLocationController.text.trim(),
+                              'pickupLocation':
+                                  pickupLocationController.text.trim(),
                               'pickupTime': pickupTimeController.text.trim(),
                             });
                           }
@@ -535,7 +402,6 @@ class _RideMatchCardState extends State<_RideMatchCard> {
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -576,7 +442,8 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: _getStatusColor(),
                     borderRadius: BorderRadius.circular(12),
@@ -606,7 +473,7 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: _isProcessing ? null : _acceptMatch,
-                      icon: _isProcessing 
+                      icon: _isProcessing
                           ? const SizedBox(
                               width: 16,
                               height: 16,
@@ -646,17 +513,19 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Driver Contact Information:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('Driver Contact Information:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
                       Text('Contact: ${widget.match.driverContact}'),
-                      Text('Pickup Location: ${widget.match.driverPickupLocation}'),
+                      Text(
+                          'Pickup Location: ${widget.match.driverPickupLocation}'),
                       Text('Pickup Time: ${widget.match.driverPickupTime}'),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
               ],
-              
+
               // Show passenger contact status
               if (widget.match.passengerContact == null) ...[
                 Container(
@@ -669,9 +538,13 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                   child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Waiting for Passenger Contact', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                      Text('Waiting for Passenger Contact',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange)),
                       SizedBox(height: 8),
-                      Text('The passenger needs to share their contact details from the Find Rides section.'),
+                      Text(
+                          'The passenger needs to share their contact details from the Find Rides section.'),
                     ],
                   ),
                 ),
@@ -687,7 +560,8 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Passenger Contact Information:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('Passenger Contact Information:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
                       Text('Name: ${widget.match.passengerName}'),
                       Text('Contact: ${widget.match.passengerContact}'),
@@ -695,65 +569,224 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                
-                // Vehicle entry verification button
+
+                // Vehicle entry verification section
                 if (!widget.match.vehicleEntryVerified) ...[
+                  // Check if OTP has been sent to passenger
+                  if (widget.match.vehicleEntryOTP != null) ...[
+                    // OTP sent - waiting for passenger to enter it
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border:
+                            Border.all(color: Colors.orange[200]!, width: 2),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.pending_actions,
+                                  color: Colors.orange, size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      '⏳ Waiting for Passenger Verification',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'OTP sent to ${widget.match.passengerEmail}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.orange[200]!),
+                            ),
+                            child: const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '📱 Passenger will enter the OTP in their app',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'This page will automatically update when verified',
+                                  style: TextStyle(
+                                      fontSize: 11, color: Colors.black54),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    // OTP not sent yet - show send button
+                    ElevatedButton.icon(
+                      onPressed: _isProcessing ? null : _verifyPassengerEntry,
+                      icon: _isProcessing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send_outlined),
+                      label: const Text('Send OTP to Passenger'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Passenger will receive OTP to verify before boarding',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  // Show locked completion message when NOT verified
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.lock, color: Colors.grey, size: 24),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Complete Passenger Verification First',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Passenger must verify OTP before you can complete the ride',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  // Verified successfully
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green[300]!, width: 2),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green, size: 28),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '✓ Passenger Entry Verified',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Colors.green,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Passenger can now board the vehicle',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Show completion button - ONLY after verification
                   ElevatedButton.icon(
-                    onPressed: _isProcessing ? null : _verifyPassengerEntry,
-                    icon: _isProcessing 
+                    onPressed: _isProcessing ? null : _completeMatch,
+                    icon: _isProcessing
                         ? const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.verified_user),
-                    label: const Text('Verify Passenger Entry'),
+                        : const Icon(Icons.check_circle_outline),
+                    label: const Text('Mark as Completed (After Trip)'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[600],
+                      backgroundColor: Colors.green[700],
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green[100],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green[300]!),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.green),
-                        SizedBox(width: 8),
-                        Text('Passenger Entry Verified', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                      ],
-                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Click this after the trip is completed',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
-                  const SizedBox(height: 12),
                 ],
-                
-                // Show completion button
-                ElevatedButton.icon(
-                  onPressed: _isProcessing ? null : _completeMatch,
-                  icon: _isProcessing 
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.check_circle),
-                  label: const Text('Mark as Completed'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[600],
-                    foregroundColor: Colors.white,
-                  ),
-                ),
               ],
             ] else if (widget.match.status == 'rejected') ...[
               const Text(
                 'Ride request was rejected',
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
+                style:
+                    TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
               ),
             ] else if (widget.match.status == 'completed') ...[
               Container(
@@ -769,7 +802,8 @@ class _RideMatchCardState extends State<_RideMatchCard> {
                     SizedBox(width: 8),
                     Text(
                       'Ride completed successfully!',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.green),
                     ),
                   ],
                 ),

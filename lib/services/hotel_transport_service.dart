@@ -294,7 +294,7 @@ class HotelTransportService {
     final map = <String, TransportSuggestion>{};
 
     for (final t in transport) {
-      final normalizedName = t.name.toLowerCase().trim();
+      final normalizedName = _normalizeTransportName(t.name);
       final normalizedType = t.type.toLowerCase().trim();
 
       // If coordinates exist, round to ~100m to catch near-duplicates
@@ -321,6 +321,33 @@ class HotelTransportService {
     }
 
     return map.values.toList();
+  }
+
+  // Normalize transport names to improve deduplication
+  String _normalizeTransportName(String name) {
+    var n = name.toLowerCase();
+    // Remove punctuation
+    n = n.replaceAll(RegExp(r'[^a-z0-9\\s]'), ' ');
+    // Collapse common suffixes/prefixes that create near-duplicates
+    for (final word in [
+      'station',
+      'stand',
+      'terminal',
+      'stop',
+      'hub',
+      'depot',
+      'junction',
+      'railway',
+      'bus',
+      'metro',
+      'airport',
+      'aerodrome',
+    ]) {
+      n = n.replaceAll(word, ' ');
+    }
+    // Collapse multiple spaces
+    n = n.replaceAll(RegExp(r'\\s+'), ' ').trim();
+    return n.isEmpty ? name.toLowerCase().trim() : n;
   }
 
   String _placeKey(String name, double lat, double lon) {
@@ -485,125 +512,109 @@ class HotelTransportService {
   /// Generate fallback hotels when API fails
   List<HotelSuggestion> _generateFallbackHotels(String destination, double lat, double lon, DateTime? startDate, DateTime? endDate) {
     final fallbackHotels = [
-      HotelSuggestion(
+      _buildFallbackHotel(
         id: 'fallback_1',
         name: 'Budget Hotel in $destination',
         description: 'Affordable accommodation option in the city center',
-        address: '45 Main Street, City Center, $destination',
         phone: '+91-9876543210',
         lat: lat + 0.01,
         lon: lon + 0.01,
         rating: 3.5,
         pricePerNight: 1500,
         hotelType: 'hotel',
-        distanceFromCenter: 1.2,
-        facilities: ['WiFi', 'Parking', 'Air Conditioning', 'Breakfast', 'Laundry', 'Tour Desk'],
-        isAvailable: true,
+        centerLat: lat,
+        centerLon: lon,
       ),
-      HotelSuggestion(
+      _buildFallbackHotel(
         id: 'fallback_2',
         name: 'Mid-Range Hotel in $destination',
         description: 'Comfortable hotel with good amenities',
-        address: '123 Downtown Avenue, Downtown, $destination',
         phone: '+91-8765432109',
         lat: lat + 0.015,
         lon: lon + 0.015,
         rating: 4.0,
         pricePerNight: 3500,
         hotelType: 'hotel',
-        distanceFromCenter: 2.5,
-        facilities: ['WiFi', 'Parking', 'Breakfast', 'Restaurant', 'Air Conditioning', 'Elevator', 'Room Service', 'Currency Exchange', 'Gym'],
-        isAvailable: true,
+        centerLat: lat,
+        centerLon: lon,
       ),
-      HotelSuggestion(
+      _buildFallbackHotel(
         id: 'fallback_3',
         name: 'Luxury Resort in $destination',
         description: 'Premium accommodation with excellent facilities',
-        address: '500 Premium Road, Premium Area, $destination',
         phone: '+91-7654321098',
         lat: lat + 0.02,
         lon: lon + 0.02,
         rating: 4.5,
         pricePerNight: 8000,
         hotelType: 'resort',
-        distanceFromCenter: 5.0,
-        facilities: ['WiFi', 'Parking', 'Breakfast', 'Swimming Pool', 'Gym', 'Spa', 'Restaurant', 'Bar', 'Air Conditioning', 'Room Service', 'Concierge', 'Business Center', 'Airport Shuttle', 'Kids Play Area'],
-        isAvailable: true,
+        centerLat: lat,
+        centerLon: lon,
       ),
-      HotelSuggestion(
+      _buildFallbackHotel(
         id: 'fallback_4',
         name: 'Guest House in $destination',
         description: 'Cozy guest house with homely atmosphere',
-        address: '78 Residential Lane, Residential Area, $destination',
         phone: '+91-6543210987',
         lat: lat - 0.012,
         lon: lon + 0.008,
         rating: 3.8,
         pricePerNight: 1200,
         hotelType: 'guest_house',
-        distanceFromCenter: 1.8,
-        facilities: ['WiFi', 'Parking', 'Breakfast', 'Garden', 'Terrace', 'Air Conditioning'],
-        isAvailable: true,
+        centerLat: lat,
+        centerLon: lon,
       ),
-      HotelSuggestion(
+      _buildFallbackHotel(
         id: 'fallback_5',
         name: 'Backpacker Hostel in $destination',
         description: 'Budget-friendly hostel for travelers',
-        address: '12 Tourist Street, Tourist Area, $destination',
         phone: '+91-5432109876',
         lat: lat + 0.008,
         lon: lon - 0.01,
         rating: 3.2,
         pricePerNight: 800,
         hotelType: 'hostel',
-        distanceFromCenter: 1.5,
-        facilities: ['WiFi', 'Laundry', 'Tour Desk', 'Library', 'Common Kitchen', 'Air Conditioning'],
-        isAvailable: true,
+        centerLat: lat,
+        centerLon: lon,
       ),
-      HotelSuggestion(
+      _buildFallbackHotel(
         id: 'fallback_6',
         name: 'Business Hotel in $destination',
         description: 'Modern hotel ideal for business travelers',
-        address: '200 Commercial Boulevard, Commercial District, $destination',
         phone: '+91-4321098765',
         lat: lat - 0.018,
         lon: lon - 0.015,
         rating: 4.2,
         pricePerNight: 4500,
         hotelType: 'hotel',
-        distanceFromCenter: 3.2,
-        facilities: ['WiFi', 'Parking', 'Breakfast', 'Restaurant', 'Business Center', 'Air Conditioning', 'Elevator', 'Room Service', 'Conference Room', '24/7 Reception'],
-        isAvailable: true,
+        centerLat: lat,
+        centerLon: lon,
       ),
-      HotelSuggestion(
+      _buildFallbackHotel(
         id: 'fallback_7',
         name: 'Boutique Hotel in $destination',
         description: 'Charming boutique hotel with unique character',
-        address: '89 Heritage Road, Historic Area, $destination',
         phone: '+91-3210987654',
         lat: lat + 0.022,
         lon: lon + 0.018,
         rating: 4.3,
         pricePerNight: 5500,
         hotelType: 'hotel',
-        distanceFromCenter: 4.5,
-        facilities: ['WiFi', 'Parking', 'Breakfast', 'Restaurant', 'Bar', 'Air Conditioning', 'Concierge', 'Gift Shop', 'Terrace', 'Spa'],
-        isAvailable: true,
+        centerLat: lat,
+        centerLon: lon,
       ),
-      HotelSuggestion(
+      _buildFallbackHotel(
         id: 'fallback_8',
         name: 'Family Resort in $destination',
         description: 'Family-friendly resort with activities for all ages',
-        address: '350 Resort Way, Outskirts, $destination',
         phone: '+91-2109876543',
         lat: lat - 0.025,
         lon: lon + 0.022,
         rating: 4.1,
         pricePerNight: 6000,
         hotelType: 'resort',
-        distanceFromCenter: 6.0,
-        facilities: ['WiFi', 'Parking', 'Breakfast', 'Swimming Pool', 'Gym', 'Restaurant', 'Bar', 'Air Conditioning', 'Pet Friendly', 'Kids Play Area', 'BBQ Facilities', 'Garden'],
-        isAvailable: true,
+        centerLat: lat,
+        centerLon: lon,
       ),
     ];
     
@@ -634,6 +645,58 @@ class HotelTransportService {
     
     return fallbackHotels;
   }
+
+  HotelSuggestion _buildFallbackHotel({
+    required String id,
+    required String name,
+    required String description,
+    required String phone,
+    required double lat,
+    required double lon,
+    required double rating,
+    required double pricePerNight,
+    required String hotelType,
+    required double centerLat,
+    required double centerLon,
+  }) {
+    final distance = _calculateDistanceKm(lat, lon, centerLat, centerLon);
+    final address = HotelSuggestion.generateFallbackAddressForHotel(
+      name,
+      lat,
+      lon,
+      distance,
+      id,
+    );
+
+    return HotelSuggestion(
+      id: id,
+      name: name,
+      description: description,
+      address: address,
+      phone: phone,
+      lat: lat,
+      lon: lon,
+      rating: rating,
+      pricePerNight: pricePerNight,
+      hotelType: hotelType,
+      distanceFromCenter: distance,
+      facilities: const ['WiFi', 'Parking', 'Breakfast', 'Air Conditioning'],
+      isAvailable: true,
+    );
+  }
+
+  double _calculateDistanceKm(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadius = 6371.0;
+    final dLat = _degToRad(lat2 - lat1);
+    final dLon = _degToRad(lon2 - lon1);
+    final a = (sin(dLat / 2) * sin(dLat / 2)) +
+        cos(_degToRad(lat1)) * cos(_degToRad(lat2)) *
+            (sin(dLon / 2) * sin(dLon / 2));
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _degToRad(double deg) => deg * (pi / 180.0);
 
   /// Generate fallback transport options when API fails
   List<TransportSuggestion> _generateFallbackTransport(String destination, double lat, double lon) {

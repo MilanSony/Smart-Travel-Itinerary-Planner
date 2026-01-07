@@ -1,11 +1,11 @@
 name: trip_genie
 description: "A smart travel itinerary planner."
-publish_to: 'none'
+publish_to: "none"
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -36,6 +36,12 @@ dependencies:
 
   # URL Launcher for phone calls and links
   url_launcher: ^6.2.5
+
+  # Android Intent helper (fallback for phone dialer on some Android devices)
+  android_intent_plus: ^3.0.0
+
+  # Share functionality
+  share_plus: ^7.2.1
 
 dev_dependencies:
   flutter_test:

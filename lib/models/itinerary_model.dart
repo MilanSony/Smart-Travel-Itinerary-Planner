@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Enhanced models for detailed place information
 class PlaceDetails {
@@ -36,15 +37,22 @@ class PlaceDetails {
 
   factory PlaceDetails.fromOsmElement(Map<String, dynamic> element) {
     final tags = element['tags'] as Map<String, dynamic>? ?? {};
-    final lat = element['lat']?.toDouble() ?? element['center']?['lat']?.toDouble() ?? 0.0;
-    final lon = element['lon']?.toDouble() ?? element['center']?['lon']?.toDouble() ?? 0.0;
+    final lat = element['lat']?.toDouble() ??
+        element['center']?['lat']?.toDouble() ??
+        0.0;
+    final lon = element['lon']?.toDouble() ??
+        element['center']?['lon']?.toDouble() ??
+        0.0;
 
     // Prioritize English names, fallback to local names
     String name = _getBestEnglishName(tags);
-    
+
     return PlaceDetails(
       name: name,
-      description: tags['description:en'] ?? tags['description'] ?? tags['note:en'] ?? tags['note'],
+      description: tags['description:en'] ??
+          tags['description'] ??
+          tags['note:en'] ??
+          tags['note'],
       website: tags['website'],
       phone: tags['phone'],
       openingHours: tags['opening_hours'],
@@ -64,12 +72,12 @@ class PlaceDetails {
   static String _getBestEnglishName(Map<String, dynamic> tags) {
     // Priority order for English names
     final englishNameKeys = [
-      'name:en',           // Official English name
-      'name:en:official',   // Official English name
-      'name:en:common',     // Common English name
-      'name:en:short',      // Short English name
-      'name:en:alt',        // Alternative English name
-      'name',               // Default name (might be English)
+      'name:en', // Official English name
+      'name:en:official', // Official English name
+      'name:en:common', // Common English name
+      'name:en:short', // Short English name
+      'name:en:alt', // Alternative English name
+      'name', // Default name (might be English)
     ];
 
     // Try to find an English name first
@@ -110,29 +118,66 @@ class PlaceDetails {
     // Remove common punctuation and check if remaining characters are mostly English
     final cleanText = text.replaceAll(RegExp(r'[^\w\s]'), '').trim();
     if (cleanText.isEmpty) return false;
-    
+
     // Check if text contains mostly English characters (a-z, A-Z, spaces)
     final englishPattern = RegExp(r'^[a-zA-Z\s]+$');
     if (englishPattern.hasMatch(cleanText)) {
       return true;
     }
-    
+
     // Check if text contains common English words or patterns
     final commonEnglishWords = [
-      'beach', 'fort', 'palace', 'temple', 'church', 'mosque', 'museum', 'park', 'garden',
-      'lake', 'hill', 'mountain', 'falls', 'waterfall', 'valley', 'river', 'bridge',
-      'market', 'mall', 'restaurant', 'hotel', 'station', 'airport', 'hospital', 'school',
-      'university', 'college', 'library', 'theater', 'cinema', 'stadium', 'zoo', 'aquarium',
-      'national', 'international', 'central', 'north', 'south', 'east', 'west', 'old', 'new'
+      'beach',
+      'fort',
+      'palace',
+      'temple',
+      'church',
+      'mosque',
+      'museum',
+      'park',
+      'garden',
+      'lake',
+      'hill',
+      'mountain',
+      'falls',
+      'waterfall',
+      'valley',
+      'river',
+      'bridge',
+      'market',
+      'mall',
+      'restaurant',
+      'hotel',
+      'station',
+      'airport',
+      'hospital',
+      'school',
+      'university',
+      'college',
+      'library',
+      'theater',
+      'cinema',
+      'stadium',
+      'zoo',
+      'aquarium',
+      'national',
+      'international',
+      'central',
+      'north',
+      'south',
+      'east',
+      'west',
+      'old',
+      'new'
     ];
-    
+
     final lowerText = cleanText.toLowerCase();
     for (final word in commonEnglishWords) {
       if (lowerText.contains(word)) {
         return true;
       }
     }
-    
+
     return false;
   }
 
@@ -153,7 +198,7 @@ class PlaceDetails {
     if (description != null && description!.isNotEmpty) {
       return description!;
     }
-    
+
     // Generate description based on type
     switch (tourismType) {
       case 'museum':
@@ -274,7 +319,8 @@ class Activity {
     this.cost,
   });
 
-  factory Activity.fromPlaceDetails(PlaceDetails place, String time, {String? customDescription, String? customCost}) {
+  factory Activity.fromPlaceDetails(PlaceDetails place, String time,
+      {String? customDescription, String? customCost}) {
     return Activity(
       time: time,
       title: place.name,
@@ -325,10 +371,18 @@ class Activity {
     final tags = place.additionalTags;
     final feeTag = tags['fee']?.toLowerCase();
     final chargeTag = tags['charge']?.toLowerCase();
-    final entranceFee = tags['entrance_fee'] ?? tags['entrance:fee'] ?? tags['admission'] ?? tags['ticket'];
+    final entranceFee = tags['entrance_fee'] ??
+        tags['entrance:fee'] ??
+        tags['admission'] ??
+        tags['ticket'];
 
     String? parsedAmount;
-    for (final val in [tags['fee:amount'], tags['charge:amount'], entranceFee, chargeTag]) {
+    for (final val in [
+      tags['fee:amount'],
+      tags['charge:amount'],
+      entranceFee,
+      chargeTag
+    ]) {
       if (val == null) continue;
       final match = RegExp(r'(\d{2,6})').firstMatch(val);
       if (match != null) {
@@ -339,11 +393,16 @@ class Activity {
     if (parsedAmount != null) {
       return '₹$parsedAmount per person';
     }
-    if (feeTag == 'yes' || (entranceFee != null && entranceFee.toString().isNotEmpty) || (chargeTag != null && chargeTag.contains('yes'))) {
-      if (place.tourismType == 'museum' || place.tourismType == 'monument' || place.tourismType == 'attraction') {
+    if (feeTag == 'yes' ||
+        (entranceFee != null && entranceFee.toString().isNotEmpty) ||
+        (chargeTag != null && chargeTag.contains('yes'))) {
+      if (place.tourismType == 'museum' ||
+          place.tourismType == 'monument' ||
+          place.tourismType == 'attraction') {
         return '₹50-200 per person';
       }
-      if (place.additionalTags['leisure'] == 'park' || place.additionalTags['leisure'] == 'garden') {
+      if (place.additionalTags['leisure'] == 'park' ||
+          place.additionalTags['leisure'] == 'garden') {
         return '₹20-50 per person';
       }
       return '₹30-100 per person';
@@ -399,10 +458,14 @@ class Activity {
   // Local helper for attractions cost when OSM tags didn't give an exact value
   static String _estimateAttractionCost(PlaceDetails place) {
     final name = place.name.toLowerCase();
-    if (name.contains('fort') || name.contains('palace') || name.contains('castle')) {
+    if (name.contains('fort') ||
+        name.contains('palace') ||
+        name.contains('castle')) {
       return '₹50-200 per person';
     }
-    if (name.contains('temple') || name.contains('church') || name.contains('mosque')) {
+    if (name.contains('temple') ||
+        name.contains('church') ||
+        name.contains('mosque')) {
       return 'Free';
     }
     if (name.contains('beach')) {
@@ -414,7 +477,9 @@ class Activity {
     if (name.contains('falls') || name.contains('waterfall')) {
       return '₹30-100 per person';
     }
-    if (name.contains('hill') || name.contains('mountain') || name.contains('peak')) {
+    if (name.contains('hill') ||
+        name.contains('mountain') ||
+        name.contains('peak')) {
       return '₹50-150 per person';
     }
     if (name.contains('lake') || name.contains('river')) {
@@ -456,4 +521,157 @@ class Itinerary {
     this.startDate,
     this.endDate,
   });
+}
+
+/// Serialization helpers for itinerary-related models.
+///
+/// These helpers convert between model instances and plain Maps that are
+/// suitable for storing in Firestore (or encoding to JSON). They accept/emit
+/// common types (including Firestore Timestamps) and are tolerant when
+/// reading date fields stored either as ISO strings or as Timestamps.
+
+DateTime? _parseDate(dynamic v) {
+  if (v == null) return null;
+  if (v is DateTime) return v;
+  if (v is Timestamp) return v.toDate();
+  if (v is String) return DateTime.tryParse(v);
+  return null;
+}
+
+Map<String, dynamic> placeDetailsToMap(PlaceDetails p) {
+  return {
+    'name': p.name,
+    'description': p.description,
+    'website': p.website,
+    'phone': p.phone,
+    'openingHours': p.openingHours,
+    'address': p.address,
+    'cuisine': p.cuisine,
+    'tourismType': p.tourismType,
+    'amenityType': p.amenityType,
+    'rating': p.rating,
+    'imageUrl': p.imageUrl,
+    'lat': p.lat,
+    'lon': p.lon,
+    'additionalTags': p.additionalTags,
+  };
+}
+
+PlaceDetails placeDetailsFromMap(Map<String, dynamic> m) {
+  return PlaceDetails(
+    name: m['name'] ?? '',
+    description: m['description'],
+    website: m['website'],
+    phone: m['phone'],
+    openingHours: m['openingHours'],
+    address: m['address'],
+    cuisine: m['cuisine'],
+    tourismType: m['tourismType'],
+    amenityType: m['amenityType'],
+    rating: (m['rating'] is num)
+        ? (m['rating'] as num).toDouble()
+        : double.tryParse(m['rating']?.toString() ?? ''),
+    imageUrl: m['imageUrl'],
+    lat: (m['lat'] is num)
+        ? (m['lat'] as num).toDouble()
+        : double.tryParse(m['lat']?.toString() ?? '') ?? 0.0,
+    lon: (m['lon'] is num)
+        ? (m['lon'] as num).toDouble()
+        : double.tryParse(m['lon']?.toString() ?? '') ?? 0.0,
+    additionalTags: (m['additionalTags'] as Map<String, dynamic>?)
+            ?.map((k, v) => MapEntry(k, v.toString())) ??
+        {},
+  );
+}
+
+Map<String, dynamic> activityToMap(Activity a) {
+  return {
+    'time': a.time,
+    'title': a.title,
+    'description': a.description,
+    'icon': {
+      'codePoint': a.icon.codePoint,
+      'fontFamily': a.icon.fontFamily,
+      'fontPackage': a.icon.fontPackage,
+    },
+    'placeDetails':
+        a.placeDetails != null ? placeDetailsToMap(a.placeDetails!) : null,
+    'estimatedDuration': a.estimatedDuration,
+    'cost': a.cost,
+  };
+}
+
+Activity activityFromMap(Map<String, dynamic> m) {
+  final iconMap = (m['icon'] as Map<String, dynamic>?) ?? {};
+  final codePoint =
+      (iconMap['codePoint'] is num) ? (iconMap['codePoint'] as num).toInt() : 0;
+  final fontFamily = iconMap['fontFamily'] as String?;
+  final fontPackage = iconMap['fontPackage'] as String?;
+  final iconData =
+      IconData(codePoint, fontFamily: fontFamily, fontPackage: fontPackage);
+
+  return Activity(
+    time: m['time'] ?? '',
+    title: m['title'] ?? '',
+    description: m['description'] ?? '',
+    icon: iconData,
+    placeDetails: m['placeDetails'] != null
+        ? placeDetailsFromMap(Map<String, dynamic>.from(m['placeDetails']))
+        : null,
+    estimatedDuration: m['estimatedDuration'],
+    cost: m['cost'],
+  );
+}
+
+Map<String, dynamic> dayPlanToMap(DayPlan d) {
+  return {
+    'dayTitle': d.dayTitle,
+    'description': d.description,
+    'totalEstimatedCost': d.totalEstimatedCost,
+    'activities': d.activities.map((a) => activityToMap(a)).toList(),
+  };
+}
+
+DayPlan dayPlanFromMap(Map<String, dynamic> m) {
+  return DayPlan(
+    dayTitle: m['dayTitle'] ?? '',
+    description: m['description'] ?? '',
+    totalEstimatedCost: (m['totalEstimatedCost'] is num)
+        ? (m['totalEstimatedCost'] as num).toDouble()
+        : double.tryParse(m['totalEstimatedCost']?.toString() ?? ''),
+    activities: (m['activities'] as List<dynamic>?)
+            ?.map((a) => activityFromMap(Map<String, dynamic>.from(a)))
+            .toList() ??
+        [],
+  );
+}
+
+Map<String, dynamic> itineraryToMap(Itinerary it) {
+  return {
+    'destination': it.destination,
+    'title': it.title,
+    'summary': it.summary,
+    'totalEstimatedCost': it.totalEstimatedCost,
+    'startDate':
+        it.startDate != null ? Timestamp.fromDate(it.startDate!) : null,
+    'endDate': it.endDate != null ? Timestamp.fromDate(it.endDate!) : null,
+    'dayPlans': it.dayPlans.map((d) => dayPlanToMap(d)).toList(),
+  };
+}
+
+Itinerary itineraryFromMap(Map<String, dynamic> m) {
+  return Itinerary(
+    destination: m['destination'] ?? '',
+    title: m['title'] ?? '',
+    dayPlans: (m['dayPlans'] as List<dynamic>?)
+            ?.map((d) => dayPlanFromMap(Map<String, dynamic>.from(d)))
+            .toList() ??
+        [],
+    summary: m['summary'],
+    totalEstimatedCost: (m['totalEstimatedCost'] is num)
+        ? (m['totalEstimatedCost'] as num).toDouble()
+        : double.tryParse(m['totalEstimatedCost']?.toString() ?? ''),
+    startDate: _parseDate(m['startDate']),
+    endDate: _parseDate(m['endDate']),
+  );
 }

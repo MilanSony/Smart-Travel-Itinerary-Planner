@@ -774,15 +774,27 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
               const SizedBox(height: 12),
               InkWell(
                 onTap: () async {
-                  // Clean phone number for dialing (remove +91 and keep only digits)
+                  // Clean phone number for dialing (keep digits only)
                   String phoneToDial = hotel.phone!.replaceAll(RegExp(r'[^\d]'), '');
-                  if (phoneToDial.startsWith('91') && phoneToDial.length == 12) {
-                    phoneToDial = phoneToDial.substring(2); // Remove country code
+                  // Remove leading country code if present
+                  if (phoneToDial.startsWith('91') && phoneToDial.length > 10) {
+                    phoneToDial = phoneToDial.substring(phoneToDial.length - 10);
                   }
-                  final phoneUri = Uri.parse('tel:$phoneToDial');
-                  if (await canLaunchUrl(phoneUri)) {
-                    await launchUrl(phoneUri);
-                  } else {
+                  final phoneUri = Uri(scheme: 'tel', path: phoneToDial);
+                  try {
+                    final launched = await launchUrl(
+                      phoneUri,
+                      mode: LaunchMode.externalApplication,
+                    );
+                    if (!launched && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Could not launch phone: ${hotel.phone}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  } catch (_) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -1098,13 +1110,24 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
               InkWell(
                 onTap: () async {
                   String phoneToDial = transport.phone!.replaceAll(RegExp(r'[^\d]'), '');
-                  if (phoneToDial.startsWith('91') && phoneToDial.length == 12) {
-                    phoneToDial = phoneToDial.substring(2);
+                  if (phoneToDial.startsWith('91') && phoneToDial.length > 10) {
+                    phoneToDial = phoneToDial.substring(phoneToDial.length - 10);
                   }
-                  final phoneUri = Uri.parse('tel:$phoneToDial');
-                  if (await canLaunchUrl(phoneUri)) {
-                    await launchUrl(phoneUri);
-                  } else {
+                  final phoneUri = Uri(scheme: 'tel', path: phoneToDial);
+                  try {
+                    final launched = await launchUrl(
+                      phoneUri,
+                      mode: LaunchMode.externalApplication,
+                    );
+                    if (!launched && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Could not launch phone: ${transport.phone}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  } catch (_) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(

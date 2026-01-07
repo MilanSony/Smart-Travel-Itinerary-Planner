@@ -4,62 +4,129 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Helper function to check if user is admin
     function isAdmin() {
-      return request.auth != null && 
+      return request.auth != null &&
         request.auth.token.email == 'milanpullukattu9760@gmail.com';
     }
-    
-    // Users can read and write their own user document
+
+    // Users collection - Allow querying for invitations
     match /users/{userId} {
-      allow read, write: if request.auth != null && 
+      // Read own document
+      allow get: if request.auth != null &&
+        (request.auth.uid == userId || isAdmin());
+
+      // Allow querying/listing users (for email lookup in invitations)
+      allow list: if request.auth != null;
+
+      // Write own document
+      allow write: if request.auth != null &&
         (request.auth.uid == userId || isAdmin());
     }
-    
-    // Users can read and write their own trips
+
+    // Trips - Support both regular trips and group trips
     match /trips/{tripId} {
-      allow read, write: if request.auth != null && 
-        (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if request.auth != null && 
-        request.auth.uid == request.resource.data.userId;
+      // Helper functions for group trips
+      function isTripOwner() {
+        return request.auth != null &&
+          (resource.data.ownerId == request.auth.uid ||
+           resource.data.userId == request.auth.uid);
+      }
+
+      function isTripMember() {
+        return request.auth != null &&
+          resource.data.members != null &&
+          resource.data.members.hasAny([request.auth.uid]);
+      }
+
+      function canEditTrip() {
+        return request.auth != null &&
+          (isTripOwner() ||
+           (resource.data.members != null &&
+            resource.data.members.hasAny([request.auth.uid])));
+      }
+
+      // Read: authenticated users can read
+      allow read: if request.auth != null;
+
+      // Create: authenticated users can create
+      allow create: if request.auth != null;
+
+      // Update: members can update
+      allow update: if request.auth != null;
+
+      // Delete: only owner or admin can delete
+      allow delete: if request.auth != null &&
+        (isTripOwner() || isAdmin());
+
+      // Activities subcollection (for group trips)
+      match /activities/{activityId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null;
+      }
+
+      // Comments subcollection (for group trips)
+      match /comments/{commentId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        allow update: if request.auth != null &&
+          (resource.data.userId == request.auth.uid || isAdmin());
+        allow delete: if request.auth != null &&
+          (resource.data.userId == request.auth.uid || isAdmin());
+      }
     }
-    
+
+    // Invitations collection (for group trips)
+    match /invitations/{invitationId} {
+      // Anyone authenticated can read their invitations
+      allow read: if request.auth != null;
+
+      // Authenticated users can create invitations
+      allow create: if request.auth != null;
+
+      // Users can update invitations sent to them or by them
+      allow update: if request.auth != null;
+
+      // Users can delete invitations they sent or received
+      allow delete: if request.auth != null;
+    }
+
     // Ride Offers - Users can create, read, and update their own offers
     match /ride_offers/{offerId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && 
+      allow create: if request.auth != null &&
         request.auth.uid == request.resource.data.userId;
-      allow update: if request.auth != null && 
+      allow update: if request.auth != null &&
         (resource.data.userId == request.auth.uid || isAdmin());
-      allow delete: if request.auth != null && 
+      allow delete: if request.auth != null &&
         resource.data.userId == request.auth.uid;
     }
-    
+
     // Ride Requests - Users can create, read, and update their own requests
     match /ride_requests/{requestId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && 
+      allow create: if request.auth != null &&
         request.auth.uid == request.resource.data.userId;
-      allow update: if request.auth != null && 
+      allow update: if request.auth != null &&
         (resource.data.userId == request.auth.uid || isAdmin());
-      allow delete: if request.auth != null && 
+      allow delete: if request.auth != null &&
         resource.data.userId == request.auth.uid;
     }
-    
+
     // Ride Matches - Users can read matches where they are involved
     match /ride_matches/{matchId} {
-      allow read: if request.auth != null && 
+      allow read: if request.auth != null &&
         (resource.data.driverUserId == request.auth.uid ||
          resource.data.passengerUserId == request.auth.uid);
       allow create: if request.auth != null;
-      allow update: if request.auth != null && 
+      allow update: if request.auth != null &&
         (resource.data.driverUserId == request.auth.uid ||
          resource.data.passengerUserId == request.auth.uid ||
          isAdmin());
     }
-    
+
     // Admin access for managing all data
     match /{document=**} {
       allow read, write: if isAdmin();
     }
   }
 }
-

@@ -136,7 +136,7 @@ class ItineraryService {
       final geocodeData = await _geocodeDestination(destination);
       if (geocodeData == null) {
         print('No geocoding data found, trying fallback...');
-          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
+          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
       }
 
       final displayName = geocodeData['display_name'];
@@ -147,10 +147,18 @@ class ItineraryService {
       print('Bounding box: $bboxString');
 
       // Step 2: Fetch comprehensive place data
-      final places = await _fetchPlaces(bboxString, interests);
+      List<PlaceDetails> places = [];
+      try {
+        places = await _fetchPlaces(bboxString, interests);
+      } catch (e) {
+        print('Error fetching places: $e');
+        print('Switching to fallback itinerary with curated data...');
+        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+      }
+      
       if (places.isEmpty) {
-        print('No places found, trying fallback...');
-          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
+        print('No places found from OSM, using curated fallback...');
+        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
       }
 
       // Step 3: Categorize and filter places
@@ -170,7 +178,7 @@ class ItineraryService {
 
       if (dayPlans.isEmpty) {
         print('No day plans generated, trying fallback...');
-          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
+          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
       }
 
       // Step 5: Calculate total cost
@@ -199,31 +207,32 @@ class ItineraryService {
       print("Error generating itinerary with OSM: $e");
       print("Error type: ${e.runtimeType}");
       
-      // Try fallback if network fails
-      if (e.toString().contains('SocketException') || 
-          e.toString().contains('HandshakeException') ||
-          e.toString().contains('TimeoutException')) {
-        print('Network error detected, trying fallback itinerary...');
-        try {
-            return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
-        } catch (fallbackError) {
-          print('Fallback also failed: $fallbackError');
-          throw Exception('Network connection error. Please check your internet connection and try again.');
-        }
-      } else {
-        throw Exception('Failed to generate itinerary: ${e.toString()}');
+      // Always try fallback for any error - never throw exception, always return something
+      print('Error detected, trying fallback itinerary...');
+      try {
+        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+      } catch (fallbackError) {
+        print('Fallback also failed: $fallbackError');
+        // Even if fallback fails, return a basic itinerary instead of throwing
+        return _generateBasicFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
       }
       }
     }
 
-    // Enforce a 15-second ceiling; on timeout, immediately return fallback
-    return await _generateCore().timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        print('Itinerary generation timed out after 15s - using fallback');
-        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate);
-      },
-    );
+    // Enforce a 20-second ceiling; on timeout, immediately return fallback
+    try {
+      return await _generateCore().timeout(
+        const Duration(seconds: 20),
+        onTimeout: () {
+          print('Itinerary generation timed out after 20s - using curated fallback');
+          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+        },
+      ) ?? _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+    } catch (e) {
+      print('Unexpected error in itinerary generation: $e');
+      // Always return something, never null
+      return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+    }
   }
 
   /// Public method to get destination coordinates
@@ -715,15 +724,26 @@ class ItineraryService {
       ];
     }
     
-    // Kerala
+    // Kerala - Kochi/Cochin - Queen of Arabian Sea
     if (key.contains('kochi') || key.contains('cochin')) {
       return [
+        // Historic Fort Kochi
         'fort kochi', 'chinese fishing nets', 'santa cruz basilica', 'st francis church',
         'jew town', 'mattancherry palace', 'dutch palace', 'paradesi synagogue',
         'marine drive', 'cherai beach', 'bolgatty palace', 'willingdon island',
         'kerala kathakali centre', 'kerala folklore museum', 'hill palace', 'lulu mall',
         'kashi art gallery', 'kerala backwaters', 'kumbalangi village', 'mangalavanam bird sanctuary',
         'pallipuram fort', 'thripunithura hill palace', 'kalady', 'edappally church',
+        // More Famous Spots
+        'vypin island', 'pallipuram fort', 'kadamattom church', 'kalady adi shankara temple',
+        'cherai beach', 'puthenthode beach', 'kuzhupilly beach', 'marari beach',
+        'kumbalangi model tourism village', 'kumbalangi backwaters', 'kumbalangi fishing',
+        'kerala backwaters cruise', 'kerala houseboat', 'kathakali performance',
+        'kalaripayattu show', 'kochi biennale', 'kochi muziris biennale',
+        'kochi international airport', 'kochi metro', 'kochi port', 'kochi shipyard',
+        'kochi spice market', 'kochi fish market', 'kochi flower market',
+        'kochi cultural centre', 'kochi art gallery', 'kochi heritage walk',
+        'kochi food walk', 'kochi street food', 'kochi seafood', 'kochi biryani',
       ];
     }
     if (key.contains('kerala') || key.contains('trivandrum') || key.contains('thiruvananthapuram')) {
@@ -741,26 +761,58 @@ class ItineraryService {
     // Munnar - Famous hill station with tea gardens, viewpoints, waterfalls
     if (key.contains('munnar')) {
       return [
-        'tea museum', 'mattupetty dam', 'echo point', 'top station', 'kundala lake',
-        'attukal waterfalls', 'lakhom waterfalls', 'chinnar wildlife sanctuary',
-        'eravikulam national park', 'anaimudi peak', 'marayoor sandalwood forest',
-        'lockhart gap', 'photo point', 'blossom park', 'rose garden', 'tea gardens',
-        'pothamedu viewpoint', 'meesapulimala', 'kolukkumalai tea estate',
-        'chinnakanal waterfalls', 'power house waterfalls', 'lakkom waterfalls',
-        'mattupetty viewpoint', 'kundala dam', 'devikulam', 'munnar town',
-        'tata tea museum', 'lockhart tea estate', 'kanan devan hills',
+        // Tea Gardens & Estates
+        'tea museum', 'tata tea museum', 'lockhart tea estate', 'kanan devan hills',
+        'kolukkumalai tea estate', 'tea gardens', 'tea factory tour', 'tea plantation',
+        // Dams & Lakes
+        'mattupetty dam', 'kundala lake', 'kundala dam', 'mattupetty viewpoint',
+        'devikulam', 'mattupetty boating', 'kundala boating',
+        // Viewpoints & Scenic Spots
+        'echo point', 'top station', 'lockhart gap', 'photo point', 'pothamedu viewpoint',
+        'mattupetty viewpoint', 'meesapulimala', 'anaimudi peak', 'sunrise point',
+        'sunset point', 'viewpoint munnar', 'panoramic view',
+        // Waterfalls
+        'attukal waterfalls', 'lakhom waterfalls', 'chinnakanal waterfalls',
+        'power house waterfalls', 'lakkom waterfalls', 'nyayamakad waterfalls',
+        'cheeyappara waterfalls', 'valara waterfalls', 'attukad waterfalls',
+        // Parks & Gardens
+        'blossom park', 'rose garden', 'spice garden', 'flora garden',
+        'botanical garden', 'flower garden', 'herb garden',
+        // Wildlife & Nature
+        'eravikulam national park', 'chinnar wildlife sanctuary', 'marayoor sandalwood forest',
+        'elephant spotting', 'wildlife safari', 'bird watching', 'nature walk',
+        'jungle trekking', 'forest walk', 'eco tourism',
+        // Adventure & Activities
+        'trekking', 'camping', 'rock climbing', 'rappelling', 'mountain biking',
+        'adventure activities', 'outdoor activities', 'nature photography',
+        // Cultural & Heritage
+        'munnar town', 'munnar market', 'munnar spice market', 'munnar culture',
+        'munnar heritage', 'munnar museum', 'munnar church', 'munnar temple',
+        // Nearby Attractions
+        'marayoor', 'chinnar', 'devikulam', 'pallivasal', 'kundala',
+        'mattupetty', 'lockhart', 'photo point', 'echo point',
       ];
     }
     
     // Gavi - Eco Tourism Paradise in Kerala
     if (key.contains('gavi')) {
       return [
-        'gavi eco tourism', 'periyar tiger reserve', 'gavi dam', 'gavi lake',
-        'sabarimala', 'pamba', 'pathanamthitta', 'kakki reservoir', 'sengulam dam',
-        'pullumedu', 'neelimala', 'appachimedu', 'shabarimala temple', 'pamba river',
-        'gavi forest', 'wildlife sanctuary', 'elephant spotting', 'bird watching',
-        'jungle safari', 'trekking', 'camping', 'nature walk', 'eco tourism',
-        'periyar lake', 'kumily', 'thekkady', 'cardamom hills', 'spice plantation',
+        // Gavi Attractions
+        'gavi eco tourism', 'gavi dam', 'gavi lake', 'gavi forest', 'gavi viewpoint',
+        'gavi trekking', 'gavi camping', 'gavi bird watching', 'gavi wildlife',
+        'gavi nature walk', 'gavi eco lodge', 'gavi adventure', 'gavi photography',
+        // Periyar & Wildlife
+        'periyar tiger reserve', 'periyar national park', 'periyar lake', 'periyar boat ride',
+        'periyar jungle safari', 'periyar elephant ride', 'periyar wildlife',
+        'elephant spotting', 'tiger spotting', 'wildlife sanctuary', 'jungle safari',
+        // Nearby Attractions
+        'sabarimala', 'shabarimala temple', 'pamba', 'pamba river', 'pathanamthitta',
+        'kakki reservoir', 'sengulam dam', 'pullumedu', 'neelimala', 'appachimedu',
+        'kumily', 'thekkady', 'cardamom hills', 'spice plantation',
+        // Activities
+        'trekking', 'camping', 'nature walk', 'eco tourism', 'bird watching',
+        'wildlife photography', 'adventure activities', 'outdoor activities',
+        'boating', 'lake cruise', 'forest exploration', 'nature trails',
       ];
     }
     
@@ -1158,48 +1210,167 @@ class ItineraryService {
     // Wayanad - Green Paradise
     if (key.contains('wayanad')) {
       return [
-        'edakkal caves', 'banasura sagar dam', 'chembra peak', 'meenmutty waterfalls',
-        'soochipara falls', 'kuruva island', 'pookode lake', 'lakkidi viewpoint',
-        'thirunelli temple', 'muthanga wildlife sanctuary', 'tholpetty wildlife sanctuary',
-        'wayanad heritage museum', 'phantom rock', 'neelimala viewpoint', 'chain tree',
+        // Caves & Historical
+        'edakkal caves', 'edakkal rock art', 'wayanad heritage museum', 'pazhassi raja tomb',
+        'pazhassi raja museum', 'ancient caves', 'prehistoric caves', 'rock engravings',
+        // Dams & Lakes
+        'banasura sagar dam', 'pookode lake', 'pookode boating', 'karapuzha dam',
+        'banasura dam', 'lake activities', 'boating', 'fishing',
+        // Peaks & Viewpoints
+        'chembra peak', 'chembra trekking', 'lakkidi viewpoint', 'neelimala viewpoint',
+        'chain tree', 'phantom rock', 'meenmutty viewpoint', 'sunrise point',
+        'sunset point', 'mountain view', 'valley view', 'scenic viewpoint',
+        // Waterfalls
+        'meenmutty waterfalls', 'soochipara falls', 'kanthanpara waterfalls',
+        'chethalayam waterfalls', 'waterfall trekking', 'waterfall photography',
+        // Islands & Nature
+        'kuruva island', 'kuruva island boating', 'kuruva nature walk',
+        'bamboo rafting', 'river crossing', 'island exploration',
+        // Wildlife & Sanctuaries
+        'muthanga wildlife sanctuary', 'tholpetty wildlife sanctuary', 'wayanad wildlife',
+        'elephant spotting', 'wildlife safari', 'jungle safari', 'bird watching',
+        'nature walk', 'forest trekking', 'wildlife photography',
+        // Temples & Culture
+        'thirunelli temple', 'vythiri temple', 'wayanad temples', 'wayanad culture',
+        'wayanad heritage', 'tribal culture', 'indigenous tribes', 'local traditions',
+        // Adventure & Activities
+        'trekking', 'camping', 'rock climbing', 'rappelling', 'mountain biking',
+        'adventure activities', 'outdoor activities', 'nature photography',
+        'eco tourism', 'jungle camping', 'night safari', 'bird watching tour',
+        // Plantations & Spice
+        'spice plantation', 'coffee plantation', 'tea plantation', 'cardamom plantation',
+        'pepper plantation', 'plantation tour', 'spice garden', 'organic farming',
+        // Nearby Attractions
+        'kalpetta', 'sultan battery', 'mananthavady', 'vythiri', 'ambalavayal',
       ];
     }
     
     // Thekkady - Wildlife & Spice
     if (key.contains('thekkady') || key.contains('periyar')) {
       return [
-        'periyar national park', 'periyar lake', 'elephant junction', 'spice plantation',
-        'kathakali centre', 'mullaperiyar dam', 'mangala devi temple', 'vandiperiyar',
-        'kumily', 'boat ride periyar', 'jungle safari', 'elephant ride',
-        'tiger reserve', 'cardamom hills', 'kurisumala', 'pandikuzhi',
+        // Periyar National Park & Wildlife
+        'periyar national park', 'periyar tiger reserve', 'periyar lake', 'periyar boat ride',
+        'periyar jungle safari', 'periyar elephant ride', 'periyar wildlife',
+        'elephant junction', 'tiger spotting', 'wildlife spotting', 'wildlife safari',
+        'jungle safari', 'night safari', 'bird watching', 'wildlife photography',
+        'nature walk', 'forest trekking', 'jungle walk', 'eco tourism',
+        // Spice Plantations
+        'spice plantation', 'spice garden', 'spice tour', 'cardamom hills',
+        'cardamom plantation', 'pepper plantation', 'cinnamon plantation',
+        'clove plantation', 'nutmeg plantation', 'vanilla plantation',
+        'organic spice farm', 'spice market', 'spice shopping',
+        // Cultural & Heritage
+        'kathakali centre', 'kathakali performance', 'kerala dance', 'cultural show',
+        'mangala devi temple', 'mangala devi trek', 'temple visit', 'local culture',
+        'kumily', 'kumily market', 'kumily spice market', 'local shopping',
+        // Dams & Waterfalls
+        'mullaperiyar dam', 'vandiperiyar', 'waterfalls', 'kurisumala',
+        'pandikuzhi', 'waterfall trekking', 'scenic spots',
+        // Activities & Adventure
+        'boat ride periyar', 'lake cruise', 'boating', 'fishing',
+        'trekking', 'camping', 'adventure activities', 'outdoor activities',
+        'nature photography', 'wildlife tour', 'eco tour', 'guided tour',
+        // Nearby Attractions
+        'gavi', 'kumily', 'vandiperiyar', 'cardamom hills', 'spice valley',
       ];
     }
     
     // Alleppey - Backwaters Paradise
     if (key.contains('alleppey') || key.contains('alappuzha')) {
       return [
-        'alleppey backwaters', 'houseboat', 'vembanad lake', 'marari beach',
-        'kuttanad', 'karumadi kuttan', 'revi karunakaran museum', 'amritapuri',
-        'pathiramanal island', 'krishnapuram palace', 'kayamkulam', 'champakulam',
-        'kumarakom bird sanctuary', 'nehru trophy boat race', 'punnamada lake',
+        // Backwaters & Houseboats
+        'alleppey backwaters', 'houseboat', 'houseboat cruise', 'backwater cruise',
+        'vembanad lake', 'punnamada lake', 'backwater tour', 'canal cruise',
+        'kerala backwaters', 'backwater experience', 'houseboat stay',
+        // Beaches
+        'marari beach', 'alleppey beach', 'thumpoly beach', 'alappuzha beach',
+        'beach walk', 'beach activities', 'sunset beach',
+        // Islands & Villages
+        'pathiramanal island', 'pathiramanal bird sanctuary', 'kuttanad',
+        'kuttanad paddy fields', 'kuttanad village', 'champakulam',
+        'champakulam boat race', 'champakulam church', 'kayamkulam',
+        // Heritage & Culture
+        'karumadi kuttan', 'karumadi buddha', 'revi karunakaran museum',
+        'krishnapuram palace', 'krishnapuram museum', 'amritapuri',
+        'amritapuri ashram', 'mullakkal temple', 'sree krishna temple',
+        // Activities & Events
+        'nehru trophy boat race', 'snake boat race', 'boat race', 'vallam kali',
+        'kumarakom bird sanctuary', 'bird watching', 'fishing', 'village tour',
+        'spice plantation tour', 'coconut plantation', 'coir making',
+        'local cuisine', 'kerala food', 'traditional cooking', 'cultural show',
+        'kathakali performance', 'kerala dance', 'traditional art',
       ];
     }
     
     // Varkala - Cliff Beach Paradise
     if (key.contains('varkala')) {
       return [
-        'varkala beach', 'papanasam beach', 'kappil beach', 'janardhana swamy temple',
-        'sivagiri mutt', 'kadakkal', 'anchuthengu fort', 'ponnumthuruthu island',
-        'edava beach', 'kappil lake', 'varkala cliff', 'golden beach',
+        // Famous Beaches
+        'varkala beach', 'papanasam beach', 'kappil beach', 'edava beach',
+        'golden beach', 'cliff beach', 'north cliff', 'south cliff',
+        'beach walk', 'beach activities', 'sunset beach', 'sunrise beach',
+        'beach yoga', 'beach meditation', 'beach sports', 'water sports',
+        // Temples & Spiritual
+        'janardhana swamy temple', 'sivagiri mutt', 'sivagiri ashram',
+        'temple visit', 'spiritual experience', 'meditation', 'yoga',
+        'ayurveda', 'ayurvedic treatment', 'wellness center', 'spa',
+        // Forts & Heritage
+        'anchuthengu fort', 'dutch fort', 'historical fort', 'heritage walk',
+        'varkala heritage', 'cultural tour', 'historical sites',
+        // Islands & Lakes
+        'ponnumthuruthu island', 'kappil lake', 'kappil backwaters',
+        'island visit', 'lake activities', 'boating', 'fishing',
+        // Cliffs & Viewpoints
+        'varkala cliff', 'cliff walk', 'cliff viewpoint', 'sunset point',
+        'sunrise point', 'scenic view', 'ocean view', 'cliff photography',
+        // Activities & Adventure
+        'surfing', 'swimming', 'snorkeling', 'scuba diving', 'parasailing',
+        'jet skiing', 'banana boat', 'water sports', 'adventure activities',
+        'trekking', 'cliff climbing', 'rock climbing', 'nature walk',
+        // Shopping & Markets
+        'varkala market', 'beach market', 'local shopping', 'handicrafts',
+        'souvenirs', 'spice shopping', 'local products',
+        // Food & Cuisine
+        'beach restaurants', 'seafood', 'local cuisine', 'kerala food',
+        'beach cafes', 'cliff restaurants', 'sunset dining',
+        // Nearby Attractions
+        'kadakkal', 'kappil', 'ponnumthuruthu', 'anchuthengu', 'sivagiri',
       ];
     }
     
     // Kovalam - Beach Paradise
     if (key.contains('kovalam')) {
       return [
+        // Famous Beaches
         'kovalam beach', 'lighthouse beach', 'hawah beach', 'samudra beach',
-        'halcyon castle', 'kovalam lighthouse', 'karamana river', 'vettukad church',
-        'padmanabhaswamy temple', 'shanghumukham beach', 'vellayani lake',
+        'shanghumukham beach', 'beach walk', 'beach activities', 'sunset beach',
+        'sunrise beach', 'beach yoga', 'beach meditation', 'beach sports',
+        // Lighthouse & Views
+        'kovalam lighthouse', 'lighthouse climb', 'lighthouse view', 'panoramic view',
+        'sunset point', 'sunrise point', 'ocean view', 'scenic viewpoint',
+        // Heritage & Culture
+        'halcyon castle', 'vettukad church', 'padmanabhaswamy temple',
+        'temple visit', 'church visit', 'heritage walk', 'cultural tour',
+        'kovalam heritage', 'historical sites', 'local culture',
+        // Water Activities
+        'swimming', 'surfing', 'snorkeling', 'scuba diving', 'parasailing',
+        'jet skiing', 'banana boat', 'water sports', 'adventure activities',
+        'fishing', 'boat ride', 'catamaran ride', 'kayaking',
+        // Nature & Lakes
+        'karamana river', 'vellayani lake', 'lake activities', 'boating',
+        'nature walk', 'bird watching', 'wildlife spotting',
+        // Shopping & Markets
+        'kovalam market', 'beach market', 'local shopping', 'handicrafts',
+        'souvenirs', 'spice shopping', 'local products', 'artisan shops',
+        // Food & Cuisine
+        'beach restaurants', 'seafood', 'local cuisine', 'kerala food',
+        'beach cafes', 'cliff restaurants', 'sunset dining', 'traditional food',
+        // Wellness & Ayurveda
+        'ayurveda', 'ayurvedic treatment', 'wellness center', 'spa',
+        'massage', 'yoga', 'meditation', 'wellness retreat',
+        // Nearby Attractions
+        'trivandrum', 'padmanabhaswamy temple', 'napier museum', 'kuthiramalika palace',
+        'ponmudi', 'vellayani', 'karamana',
       ];
     }
     
@@ -1329,14 +1500,27 @@ class ItineraryService {
     // Kanyakumari - Southernmost Tip of India
     if (key.contains('kanyakumari') || key.contains('cape comorin')) {
       return [
-        'vivekananda rock memorial', 'thiruvalluvar statue', 'kanyakumari beach', 'sunrise point',
-        'sunset point', 'gandhi memorial', 'kumari amman temple', 'our lady of ransom church',
-        'vattakottai fort', 'mathur hanging bridge', 'padmanabhapuram palace', 'suchindram temple',
-        'thanumalayan temple', 'st xavier church', 'baywatch amusement park', 'wax museum',
-        'tsunami memorial', 'gandhi mandapam', 'kanyakumari lighthouse', 'sanguthurai beach',
-        'chothavilai beach', 'muttom beach', 'sothavilai beach', 'colachel beach',
-        'pechiparai dam', 'kalikesam dam', 'mathur aqueduct', 'ulakkai aruvi waterfalls',
-        'keeriparai', 'marunthuvazh malai', 'nagercoil', 'padmanabhapuram',
+        // Iconic Monuments
+        'vivekananda rock memorial', 'thiruvalluvar statue', 'gandhi memorial', 'gandhi mandapam',
+        'tsunami memorial', 'kanyakumari lighthouse', 'sunrise point', 'sunset point',
+        // Temples & Religious Sites
+        'kumari amman temple', 'our lady of ransom church', 'st xavier church',
+        'suchindram temple', 'thanumalayan temple', 'nagaraja temple', 'sanguthurai beach',
+        // Forts & Heritage
+        'vattakottai fort', 'padmanabhapuram palace', 'mathur hanging bridge',
+        'mathur aqueduct', 'padmanabhapuram', 'nagercoil',
+        // Beaches
+        'kanyakumari beach', 'sanguthurai beach', 'chothavilai beach', 'muttom beach',
+        'sothavilai beach', 'colachel beach', 'golden beach', 'sunset beach',
+        'sunrise beach', 'beach walk', 'beach activities',
+        // Waterfalls & Nature
+        'ulakkai aruvi waterfalls', 'keeriparai', 'marunthuvazh malai',
+        'pechiparai dam', 'kalikesam dam', 'mathur dam', 'nature walk',
+        // Entertainment & Activities
+        'baywatch amusement park', 'wax museum', 'kanyakumari market',
+        'kanyakumari shopping', 'local cuisine', 'seafood', 'fishing',
+        'boat ride', 'ferry ride', 'sunrise viewing', 'sunset viewing',
+        'photography', 'sightseeing', 'heritage walk', 'cultural tour',
       ];
     }
     
@@ -1844,7 +2028,7 @@ class ItineraryService {
       
       if (shouldAddLunch) {
         // Lunch (12:00 PM - 2:00 PM)
-        final lunchPlace = _selectRestaurant(categorizedPlaces, day, usedPlaces: usedPlaces, budgetLevel: budgetLevel);
+        final lunchPlace = _selectRestaurant(categorizedPlaces, day, usedPlaces: usedPlaces, budgetLevel: budgetLevel, destination: destination);
         if (lunchPlace != null) {
           final restaurantCost = _getBudgetAppropriateRestaurantCost(budgetLevel, false);
           activities.add(Activity.fromPlaceDetails(
@@ -1853,10 +2037,24 @@ class ItineraryService {
             customCost: restaurantCost,
           ));
           usedPlaces.add(_getPlaceKey(lunchPlace));
+        } else {
+          // Fallback to curated restaurant name if no OSM restaurant found
+          final curatedRestaurant = _getCuratedRestaurantName(destination, day, false);
+          if (curatedRestaurant != null) {
+            final restaurantCost = _getBudgetAppropriateRestaurantCost(budgetLevel, false);
+            activities.add(Activity(
+              time: timeSlots['lunch']!,
+              title: curatedRestaurant,
+              description: 'Enjoy authentic local cuisine at $curatedRestaurant',
+              icon: Icons.restaurant_outlined,
+              estimatedDuration: '1-2 hours',
+              cost: restaurantCost,
+            ));
+          }
         }
       } else {
         // Dinner (8:00 PM - 10:00 PM)
-        final dinnerPlace = _selectRestaurant(categorizedPlaces, day, usedPlaces: usedPlaces, isDinner: true, budgetLevel: budgetLevel);
+        final dinnerPlace = _selectRestaurant(categorizedPlaces, day, usedPlaces: usedPlaces, isDinner: true, budgetLevel: budgetLevel, destination: destination);
         if (dinnerPlace != null) {
           final restaurantCost = _getBudgetAppropriateRestaurantCost(budgetLevel, true);
           activities.add(Activity.fromPlaceDetails(
@@ -1865,6 +2063,20 @@ class ItineraryService {
             customCost: restaurantCost,
           ));
           usedPlaces.add(_getPlaceKey(dinnerPlace));
+        } else {
+          // Fallback to curated restaurant name if no OSM restaurant found
+          final curatedRestaurant = _getCuratedRestaurantName(destination, day, true);
+          if (curatedRestaurant != null) {
+            final restaurantCost = _getBudgetAppropriateRestaurantCost(budgetLevel, true);
+            activities.add(Activity(
+              time: timeSlots['dinner']!,
+              title: curatedRestaurant,
+              description: 'Experience local dining at $curatedRestaurant',
+              icon: Icons.local_dining_outlined,
+              estimatedDuration: '1-2 hours',
+              cost: restaurantCost,
+            ));
+          }
         }
       }
 
@@ -2207,6 +2419,7 @@ class ItineraryService {
     bool isDinner = false,
     Set<String>? usedPlaces,
     BudgetLevel budgetLevel = BudgetLevel.moderate,
+    String? destination,
   }) {
     final restaurants = categorizedPlaces['restaurants'] ?? [];
     final cafes = categorizedPlaces['cafes'] ?? [];
@@ -2229,10 +2442,41 @@ class ItineraryService {
 
     if (candidates.isEmpty) return null;
 
+    // Prioritize restaurants with actual names (not generic/unnamed)
+    candidates.sort((a, b) {
+      // Prefer places with proper names (not "Restaurant", "Cafe", etc.)
+      final aHasGenericName = _isGenericName(a.name);
+      final bHasGenericName = _isGenericName(b.name);
+      
+      if (!aHasGenericName && bHasGenericName) return -1;
+      if (aHasGenericName && !bHasGenericName) return 1;
+      
+      // Prefer places with ratings
+      if (a.rating != null && b.rating == null) return -1;
+      if (a.rating == null && b.rating != null) return 1;
+      if (a.rating != null && b.rating != null) {
+        return b.rating!.compareTo(a.rating!);
+      }
+      
+      return 0;
+    });
+
+    // Select from top candidates (prefer named restaurants)
+    final topCandidates = candidates.take(5).toList();
     final random = Random();
-    final selected = candidates[random.nextInt(candidates.length)];
+    final selected = topCandidates[random.nextInt(topCandidates.length)];
     
     return selected;
+  }
+  
+  // Check if a name is generic (like "Restaurant", "Cafe", "Food Court")
+  bool _isGenericName(String name) {
+    final genericNames = [
+      'restaurant', 'cafe', 'food court', 'dining', 'eatery', 'food',
+      'bar', 'pub', 'bistro', 'diner', 'kitchen', 'grill'
+    ];
+    final nameLower = name.toLowerCase().trim();
+    return genericNames.any((generic) => nameLower == generic || nameLower.contains('$generic '));
   }
 
   String _generateDayDescription(int day, List<Activity> activities) {
@@ -2561,15 +2805,30 @@ class ItineraryService {
       currentTotal += dayPlan.totalEstimatedCost ?? 0;
     }
     
-    if (currentTotal == 0) return;
+    if (currentTotal == 0) {
+      // If no cost calculated, distribute budget evenly
+      final dailyBudget = userBudget / dayPlans.length;
+      for (int i = 0; i < dayPlans.length; i++) {
+        final dayPlan = dayPlans[i];
+        dayPlans[i] = DayPlan(
+          dayTitle: dayPlan.dayTitle,
+          description: dayPlan.description,
+          activities: dayPlan.activities,
+          totalEstimatedCost: dailyBudget,
+        );
+      }
+      return;
+    }
     
-    // Calculate adjustment factor
+    // Calculate adjustment factor to match user budget exactly
     final adjustmentFactor = userBudget / currentTotal;
     
     // Create new DayPlan objects with adjusted costs
+    double adjustedTotal = 0;
     for (int i = 0; i < dayPlans.length; i++) {
       final dayPlan = dayPlans[i];
       final adjustedCost = (dayPlan.totalEstimatedCost ?? 0) * adjustmentFactor;
+      adjustedTotal += adjustedCost;
       
       // Create new DayPlan with adjusted cost
       dayPlans[i] = DayPlan(
@@ -2579,73 +2838,154 @@ class ItineraryService {
         totalEstimatedCost: adjustedCost,
       );
     }
+    
+    // Ensure the total matches exactly (handle rounding errors)
+    final difference = userBudget - adjustedTotal;
+    if (difference.abs() > 0.01 && dayPlans.isNotEmpty) {
+      // Distribute the difference to the last day plan
+      final lastIndex = dayPlans.length - 1;
+      final lastPlan = dayPlans[lastIndex];
+      dayPlans[lastIndex] = DayPlan(
+        dayTitle: lastPlan.dayTitle,
+        description: lastPlan.description,
+        activities: lastPlan.activities,
+        totalEstimatedCost: (lastPlan.totalEstimatedCost ?? 0) + difference,
+      );
+    }
+    
+    print('Budget adjusted: User budget = ₹$userBudget, Final total = ₹${dayPlans.fold<double>(0.0, (sum, day) => sum + (day.totalEstimatedCost ?? 0))}');
   }
 
-  // Fallback itinerary when external APIs fail
-  Itinerary _generateFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers, {DateTime? startDate, DateTime? endDate}) {
-    print('Generating fallback itinerary for $destination');
+  // Enhanced fallback itinerary using curated destination-specific attractions
+  Itinerary _generateFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers, {DateTime? startDate, DateTime? endDate, double? userBudget}) {
+    print('Generating enhanced fallback itinerary for $destination');
     
+    // Get curated famous places for this destination
+    final curatedKeywords = _getCuratedKeywords(destination);
     final dayPlans = <DayPlan>[];
+    final random = Random();
+    
+    // Calculate daily budget if user provided budget
+    double? dailyBudget;
+    if (userBudget != null && durationInDays > 0) {
+      dailyBudget = userBudget / durationInDays;
+    }
+    
+    // Split curated places across days
+    final placesPerDay = (curatedKeywords.length / durationInDays).ceil();
     
     for (int day = 1; day <= durationInDays; day++) {
       final activities = <Activity>[];
+      final startIdx = (day - 1) * placesPerDay;
+      final endIdx = (startIdx + placesPerDay < curatedKeywords.length) 
+          ? startIdx + placesPerDay 
+          : curatedKeywords.length;
       
-      // Morning activity
-      activities.add(Activity(
-        time: '9:00 AM',
-        title: 'Explore Local Attractions',
-        description: 'Visit popular landmarks and cultural sites in $destination',
-        icon: Icons.place_outlined,
-        estimatedDuration: '2-3 hours',
-        cost: 'Free',
-      ));
+      // Get places for this day - ensure valid indices
+      List<String> dayPlaces = [];
+      if (curatedKeywords.isNotEmpty && startIdx < curatedKeywords.length) {
+        final safeStart = startIdx >= 0 ? startIdx : 0;
+        final safeEnd = endIdx > curatedKeywords.length ? curatedKeywords.length : (endIdx > safeStart ? endIdx : safeStart);
+        if (safeEnd > safeStart) {
+          dayPlaces = curatedKeywords.sublist(safeStart, safeEnd);
+        }
+      }
       
-      // Lunch
-      activities.add(Activity(
-        time: '12:30 PM',
-        title: 'Local Cuisine Experience',
-        description: 'Enjoy authentic local food and flavors',
-        icon: Icons.restaurant_outlined,
-        estimatedDuration: '1-2 hours',
-        cost: '₹300-800 per person',
-      ));
+      // If no curated places, use generic ones
+      if (dayPlaces.isEmpty || curatedKeywords.isEmpty) {
+        activities.addAll(_getGenericDayActivities(destination, day, interests));
+      } else {
+        // Use curated specific places
+        int placeIdx = 0;
+        
+        // Morning activity - use curated place
+        if (placeIdx < dayPlaces.length) {
+          final placeName = dayPlaces[placeIdx].split(' ').map((word) => 
+            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1)
+          ).join(' ');
+          activities.add(_createActivityFromPlaceName(placeName, '9:00 AM', 'morning'));
+          placeIdx++;
+        }
+        
+        // Late morning activity
+        if (placeIdx < dayPlaces.length && dayPlaces.length > 2) {
+          final placeName = dayPlaces[placeIdx].split(' ').map((word) => 
+            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1)
+          ).join(' ');
+          activities.add(_createActivityFromPlaceName(placeName, '11:00 AM', 'morning'));
+          placeIdx++;
+        }
+        
+        // Lunch - use curated restaurant name
+        final lunchRestaurant = _getCuratedRestaurantName(destination, day, false);
+        activities.add(Activity(
+          time: '12:30 PM',
+          title: lunchRestaurant ?? 'Local Cuisine Experience',
+          description: lunchRestaurant != null 
+              ? 'Enjoy authentic local food at $lunchRestaurant'
+              : 'Enjoy authentic local food and flavors of $destination',
+          icon: Icons.restaurant_outlined,
+          estimatedDuration: '1-2 hours',
+          cost: '₹300-800 per person',
+        ));
+        
+        // Afternoon activity - use curated place
+        if (placeIdx < dayPlaces.length) {
+          final placeName = dayPlaces[placeIdx].split(' ').map((word) => 
+            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1)
+          ).join(' ');
+          activities.add(_createActivityFromPlaceName(placeName, '2:30 PM', 'afternoon'));
+          placeIdx++;
+        }
+        
+        // Evening activity - use curated place
+        if (placeIdx < dayPlaces.length) {
+          final placeName = dayPlaces[placeIdx].split(' ').map((word) => 
+            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1)
+          ).join(' ');
+          activities.add(_createActivityFromPlaceName(placeName, '5:30 PM', 'evening'));
+          placeIdx++;
+        }
+        
+        // Dinner - use curated restaurant name
+        final dinnerRestaurant = _getCuratedRestaurantName(destination, day, true);
+        activities.add(Activity(
+          time: '8:00 PM',
+          title: dinnerRestaurant ?? 'Evening Dining Experience',
+          description: dinnerRestaurant != null
+              ? 'Experience local dining at $dinnerRestaurant'
+              : 'Experience local restaurants and nightlife of $destination',
+          icon: Icons.local_dining_outlined,
+          estimatedDuration: '1-2 hours',
+          cost: '₹500-1500 per person',
+        ));
+      }
       
-      // Afternoon activity
-      activities.add(Activity(
-        time: '2:30 PM',
-        title: 'Cultural Exploration',
-        description: 'Discover museums, galleries, or historical sites',
-        icon: Icons.museum_outlined,
-        estimatedDuration: '2-3 hours',
-        cost: '₹100-500 per person',
-      ));
-      
-      // Evening activity
-      activities.add(Activity(
-        time: '5:30 PM',
-        title: 'Scenic Views & Relaxation',
-        description: 'Visit viewpoints, parks, or waterfront areas',
-        icon: Icons.visibility_outlined,
-        estimatedDuration: '1-2 hours',
-        cost: 'Free',
-      ));
-      
-      // Dinner
-      activities.add(Activity(
-        time: '8:00 PM',
-        title: 'Evening Dining',
-        description: 'Experience local restaurants and nightlife',
-        icon: Icons.local_dining_outlined,
-        estimatedDuration: '1-2 hours',
-        cost: '₹500-1500 per person',
-      ));
+      // Calculate day cost - use daily budget if provided, otherwise calculate from activities
+      double dayCost;
+      if (dailyBudget != null) {
+        dayCost = dailyBudget;
+      } else {
+        dayCost = _calculateFallbackDayCost(activities, travelers);
+      }
       
       dayPlans.add(DayPlan(
         dayTitle: 'Day $day',
-        description: 'A day filled with cultural experiences and local attractions in $destination',
+        description: dayPlaces.isNotEmpty 
+            ? 'Explore ${dayPlaces.take(3).join(", ")} and other attractions in $destination'
+            : 'A day filled with cultural experiences and local attractions in $destination',
         activities: activities,
-        totalEstimatedCost: 2000.0, // Estimated daily cost
+        totalEstimatedCost: dayCost,
       ));
+    }
+    
+    // Ensure total matches user budget exactly if provided
+    double totalCost;
+    if (userBudget != null) {
+      _adjustDayCostsToMatchBudget(dayPlans, userBudget);
+      totalCost = userBudget;
+    } else {
+      totalCost = dayPlans.fold<double>(0.0, (sum, day) => sum + (day.totalEstimatedCost ?? 0.0));
     }
     
     return Itinerary(
@@ -2653,9 +2993,396 @@ class ItineraryService {
       title: 'Your Adventure in $destination',
       dayPlans: dayPlans,
       summary: 'A $durationInDays-day adventure in $destination featuring ${interests.isEmpty ? 'diverse experiences' : interests.join(', ')}. This itinerary includes carefully selected attractions, dining experiences, and activities to make your trip memorable.',
-      totalEstimatedCost: 2000.0 * durationInDays,
+      totalEstimatedCost: totalCost,
       startDate: startDate,
       endDate: endDate,
     );
+  }
+  
+  // Helper to create activity from place name
+  Activity _createActivityFromPlaceName(String placeName, String time, String timeOfDay) {
+    final nameLower = placeName.toLowerCase();
+    IconData icon = Icons.place_outlined;
+    String description = 'Visit $placeName, one of the famous attractions in the area';
+    String duration = '2-3 hours';
+    String cost = '₹50-200 per person';
+    
+    // Determine icon and description based on place type
+    if (nameLower.contains('beach')) {
+      icon = Icons.beach_access;
+      description = 'Relax and enjoy the scenic beauty of $placeName';
+      cost = 'Free';
+      duration = '2-4 hours';
+    } else if (nameLower.contains('temple') || nameLower.contains('church') || nameLower.contains('mosque')) {
+      icon = Icons.temple_buddhist;
+      description = 'Experience the spiritual and architectural beauty of $placeName';
+      cost = 'Free';
+      duration = '1-2 hours';
+    } else if (nameLower.contains('fort') || nameLower.contains('palace')) {
+      icon = Icons.castle;
+      description = 'Explore the historic $placeName and learn about its rich heritage';
+      cost = '₹50-200 per person';
+      duration = '2-3 hours';
+    } else if (nameLower.contains('falls') || nameLower.contains('waterfall')) {
+      icon = Icons.water_drop;
+      description = 'Witness the natural beauty of $placeName';
+      cost = '₹30-100 per person';
+      duration = '2-3 hours';
+    } else if (nameLower.contains('park') || nameLower.contains('garden')) {
+      icon = Icons.park;
+      description = 'Enjoy the serene atmosphere of $placeName';
+      cost = '₹20-50 per person';
+      duration = '1-2 hours';
+    } else if (nameLower.contains('museum') || nameLower.contains('gallery')) {
+      icon = Icons.museum;
+      description = 'Discover the art and culture at $placeName';
+      cost = '₹50-200 per person';
+      duration = '2-3 hours';
+    } else if (nameLower.contains('hill') || nameLower.contains('peak') || nameLower.contains('viewpoint')) {
+      icon = Icons.terrain;
+      description = 'Enjoy breathtaking views from $placeName';
+      cost = '₹50-150 per person';
+      duration = '2-3 hours';
+    } else if (nameLower.contains('lake') || nameLower.contains('backwater')) {
+      icon = Icons.water;
+      description = 'Experience the tranquility of $placeName';
+      cost = timeOfDay == 'evening' ? '₹200-500 per person' : 'Free';
+      duration = '2-3 hours';
+    } else if (nameLower.contains('market') || nameLower.contains('bazaar')) {
+      icon = Icons.shopping_bag;
+      description = 'Shop for local handicrafts and souvenirs at $placeName';
+      cost = 'Varies';
+      duration = '1-2 hours';
+    }
+    
+    return Activity(
+      time: time,
+      title: placeName,
+      description: description,
+      icon: icon,
+      estimatedDuration: duration,
+      cost: cost,
+    );
+  }
+  
+  // Generic activities when no curated data
+  List<Activity> _getGenericDayActivities(String destination, int day, List<String> interests) {
+    final lunchRestaurant = _getCuratedRestaurantName(destination, day, false);
+    final dinnerRestaurant = _getCuratedRestaurantName(destination, day, true);
+    
+    return [
+      Activity(
+        time: '9:00 AM',
+        title: 'Explore Local Attractions',
+        description: 'Visit popular landmarks and cultural sites in $destination',
+        icon: Icons.place_outlined,
+        estimatedDuration: '2-3 hours',
+        cost: 'Free',
+      ),
+      Activity(
+        time: '12:30 PM',
+        title: lunchRestaurant ?? 'Local Cuisine Experience',
+        description: lunchRestaurant != null 
+            ? 'Enjoy authentic local food at $lunchRestaurant'
+            : 'Enjoy authentic local food and flavors of $destination',
+        icon: Icons.restaurant_outlined,
+        estimatedDuration: '1-2 hours',
+        cost: '₹300-800 per person',
+      ),
+      Activity(
+        time: '2:30 PM',
+        title: 'Cultural Exploration',
+        description: 'Discover museums, galleries, or historical sites in $destination',
+        icon: Icons.museum_outlined,
+        estimatedDuration: '2-3 hours',
+        cost: '₹100-500 per person',
+      ),
+      Activity(
+        time: '5:30 PM',
+        title: 'Scenic Views & Relaxation',
+        description: 'Visit viewpoints, parks, or waterfront areas in $destination',
+        icon: Icons.visibility_outlined,
+        estimatedDuration: '1-2 hours',
+        cost: 'Free',
+      ),
+      Activity(
+        time: '8:00 PM',
+        title: dinnerRestaurant ?? 'Evening Dining',
+        description: dinnerRestaurant != null
+            ? 'Experience local dining at $dinnerRestaurant'
+            : 'Experience local restaurants and nightlife of $destination',
+        icon: Icons.local_dining_outlined,
+        estimatedDuration: '1-2 hours',
+        cost: '₹500-1500 per person',
+      ),
+    ];
+  }
+  
+  // Basic fallback when even curated fallback fails
+  Itinerary _generateBasicFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers, {DateTime? startDate, DateTime? endDate, double? userBudget}) {
+    final dayPlans = <DayPlan>[];
+    
+    // Calculate daily budget if user provided budget
+    double? dailyBudget;
+    if (userBudget != null && durationInDays > 0) {
+      dailyBudget = userBudget / durationInDays;
+    }
+    
+    for (int day = 1; day <= durationInDays; day++) {
+      final activities = _getGenericDayActivities(destination, day, interests);
+      final dayCost = dailyBudget ?? 2000.0 * travelers;
+      dayPlans.add(DayPlan(
+        dayTitle: 'Day $day',
+        description: 'A day filled with cultural experiences and local attractions in $destination',
+        activities: activities,
+        totalEstimatedCost: dayCost,
+      ));
+    }
+    
+    // Ensure total matches user budget exactly if provided
+    double totalCost;
+    if (userBudget != null) {
+      _adjustDayCostsToMatchBudget(dayPlans, userBudget);
+      totalCost = userBudget;
+    } else {
+      totalCost = 2000.0 * durationInDays * travelers;
+    }
+    
+    return Itinerary(
+      destination: destination,
+      title: 'Your Adventure in $destination',
+      dayPlans: dayPlans,
+      summary: 'A $durationInDays-day adventure in $destination.',
+      totalEstimatedCost: totalCost,
+      startDate: startDate,
+      endDate: endDate,
+    );
+  }
+  
+  // Calculate cost for fallback activities
+  double _calculateFallbackDayCost(List<Activity> activities, int travelers) {
+    double total = 0;
+    for (final activity in activities) {
+      if (activity.cost != null && activity.cost != 'Free' && activity.cost != 'Varies') {
+        final costText = activity.cost!.replaceAll(RegExp(r'[^\d-]'), '');
+        final parts = costText.split('-');
+        if (parts.length == 2) {
+          final min = double.tryParse(parts[0]) ?? 0;
+          final max = double.tryParse(parts[1]) ?? 0;
+          total += ((min + max) / 2) * travelers;
+        } else if (parts.length == 1) {
+          total += (double.tryParse(parts[0]) ?? 0) * travelers;
+        }
+      }
+    }
+    return total > 0 ? total : 2000.0 * travelers; // Default if calculation fails
+  }
+  
+  // Get curated restaurant names for destinations
+  String? _getCuratedRestaurantName(String? destination, int day, bool isDinner) {
+    if (destination == null) return null;
+    
+    final key = destination.toLowerCase();
+    final restaurants = <String>[];
+    
+    // Kerala destinations
+    if (key.contains('kochi') || key.contains('cochin')) {
+      restaurants.addAll([
+        'Fort House Restaurant', 'Kashi Art Cafe', 'Malabar Junction', 'Grand Pavilion',
+        'Cochin Fort House', 'History Restaurant', 'Tea Pot Cafe', 'Kayees Biryani',
+        'Dhe Puttu', 'Cafe Coffee Day', 'KFC', 'Pizza Hut', 'Burger King'
+      ]);
+    } else if (key.contains('munnar')) {
+      restaurants.addAll([
+        'Saravana Bhavan', 'Rapsy Restaurant', 'Guru\'s Restaurant', 'Maharani Restaurant',
+        'SN Restaurant', 'Tree Top Restaurant', 'Munnar Restaurant', 'Tea Valley Restaurant'
+      ]);
+    } else if (key.contains('alleppey') || key.contains('alappuzha')) {
+      restaurants.addAll([
+        'Kream Korner', 'Chakara Restaurant', 'Thaff Restaurant', 'Pai Brothers',
+        'Harbour Restaurant', 'Kumarakom Lake Resort Restaurant', 'Backwater Ripples'
+      ]);
+    } else if (key.contains('wayanad')) {
+      restaurants.addAll([
+        'Udupi Restaurant', 'Green Gates Restaurant', 'Tranquil Restaurant', 'Pepper Trail',
+        'Varnam Restaurant', 'Tranquil Resorts Restaurant'
+      ]);
+    } else if (key.contains('thekkady') || key.contains('periyar')) {
+      restaurants.addAll([
+        'Wildernest Restaurant', 'Spice Village Restaurant', 'Cardamom County Restaurant',
+        'Periyar House Restaurant', 'Aranya Nivas Restaurant'
+      ]);
+    } else if (key.contains('varkala')) {
+      restaurants.addAll([
+        'Clafouti Restaurant', 'Cafe del Mar', 'Little Tibet Cafe', 'German Bakery',
+        'Darjeeling Cafe', 'Kerala Coffee House'
+      ]);
+    } else if (key.contains('kovalam')) {
+      restaurants.addAll([
+        'Lighthouse Restaurant', 'Leela Beach Restaurant', 'Surya Samudra Restaurant',
+        'Hawa Beach Restaurant', 'Suprabhatham Restaurant'
+      ]);
+    } else if (key.contains('kanyakumari')) {
+      restaurants.addAll([
+        'Hotel Saravana', 'Hotel Seaview Restaurant', 'Taj Restaurant', 'Hotel Sangam',
+        'Ocean Restaurant', 'Seashore Restaurant'
+      ]);
+    } else if (key.contains('gavi')) {
+      restaurants.addAll([
+        'Gavi Eco Tourism Restaurant', 'Periyar Restaurant', 'Kumily Restaurant',
+        'Spice Plantation Restaurant'
+      ]);
+    }
+    // Goa destinations
+    else if (key.contains('goa')) {
+      restaurants.addAll([
+        'Martin\'s Corner', 'Fisherman\'s Wharf', 'Bomra\'s', 'Gunpowder', 'Viva Panjim',
+        'Ritz Classic', 'Mum\'s Kitchen', 'Pousada By The Beach', 'Thalassa', 'Curlies'
+      ]);
+    }
+    // Mumbai destinations
+    else if (key.contains('mumbai') || key.contains('bombay')) {
+      restaurants.addAll([
+        'Leopold Cafe', 'Bademiya', 'Trishna', 'Britannia & Co', 'Cafe Mondegar',
+        'Khyber', 'Gaylord', 'Pizza By The Bay', 'Theobroma', 'Cafe Madras'
+      ]);
+    }
+    // Delhi destinations
+    else if (key.contains('delhi') || key.contains('new delhi')) {
+      restaurants.addAll([
+        'Karim\'s', 'Bukhara', 'Indian Accent', 'Paranthe Wali Gali', 'Khan Chacha',
+        'Saravana Bhavan', 'Haldiram\'s', 'Sagar Ratna', 'Rajdhani', 'Dilli Haat'
+      ]);
+    }
+    // Bangalore destinations
+    else if (key.contains('bangalore') || key.contains('bengaluru')) {
+      restaurants.addAll([
+        'MTR', 'Vidyarthi Bhavan', 'Koshy\'s', 'Karavalli', 'Truffles',
+        'Cafe Coffee Day', 'Barbeque Nation', 'Absolute Barbecues'
+      ]);
+    }
+    // Chennai destinations
+    else if (key.contains('chennai') || key.contains('madras')) {
+      restaurants.addAll([
+        'Saravana Bhavan', 'Murugan Idli Shop', 'Annalakshmi', 'Copper Chimney',
+        'Zaitoon', 'Barbeque Nation', 'A2B'
+      ]);
+    }
+    // Rajasthan destinations
+    else if (key.contains('jaipur')) {
+      restaurants.addAll([
+        'LMB (Laxmi Mishthan Bhandar)', 'Chokhi Dhani', 'Handi Restaurant', 'Spice Court',
+        'Peacock Rooftop Restaurant', 'Niros', 'Rawat Misthan Bhandar'
+      ]);
+    } else if (key.contains('udaipur')) {
+      restaurants.addAll([
+        'Ambrai Restaurant', 'Jagat Niwas Palace Restaurant', 'Upre by 1559 AD',
+        'Raas Leela', 'Savage Garden', 'Jheel\'s Rooftop Restaurant'
+      ]);
+    } else if (key.contains('jodhpur')) {
+      restaurants.addAll([
+        'Jhankar Chhaya', 'Indique', 'Gypsy Restaurant', 'On The Rocks',
+        'Shahi Samosa', 'Janta Sweet Home'
+      ]);
+    }
+    // Himachal destinations
+    else if (key.contains('manali')) {
+      restaurants.addAll([
+        'Johnson\'s Cafe', 'Dylan\'s Toasted & Roasted Coffee House', 'Chopsticks',
+        'Il Forno', 'Mayur Restaurant', 'Mount View Restaurant'
+      ]);
+    } else if (key.contains('shimla')) {
+      restaurants.addAll([
+        'Wake & Bake', 'Cafe Simla Times', 'Himachali Rasoi', 'Lutyens\'s',
+        'Indian Coffee House', 'Baljees'
+      ]);
+    }
+    // Tamil Nadu destinations
+    else if (key.contains('madurai')) {
+      restaurants.addAll([
+        'Murugan Idli Shop', 'Amma Mess', 'Konar Mess', 'Aappakadai',
+        'Guru\'s Restaurant', 'Sree Sabarees Restaurant'
+      ]);
+    } else if (key.contains('ooty') || key.contains('udagamandalam')) {
+      restaurants.addAll([
+        'Nahar Restaurant', 'Shinkow\'s Chinese Restaurant', 'Earl\'s Secret',
+        'Sidewalk Cafe', 'Tibetan Restaurant', 'King Star Restaurant'
+      ]);
+    } else if (key.contains('kodaikanal')) {
+      restaurants.addAll([
+        'Cloud Street', 'Royal Tibet', 'Potluck Restaurant', 'Astoria Veg Restaurant',
+        'Muncheez', 'Tava Restaurant'
+      ]);
+    }
+    // Karnataka destinations
+    else if (key.contains('mysore') || key.contains('mysuru')) {
+      restaurants.addAll([
+        'Gayatri Tiffin Room', 'Vinayaka Mylari', 'Hotel RRR', 'Oyster Bay',
+        'Parklane Hotel Restaurant', 'Green Leaf Restaurant'
+      ]);
+    } else if (key.contains('coorg') || key.contains('kodagu')) {
+      restaurants.addAll([
+        'Coorg Cuisine', 'Raintree Restaurant', 'Taste of Coorg', 'Coorg Cliff Resort Restaurant',
+        'Hotel Coorg International Restaurant'
+      ]);
+    }
+    // West Bengal destinations
+    else if (key.contains('kolkata') || key.contains('calcutta')) {
+      restaurants.addAll([
+        'Peter Cat', 'Kewpie\'s', 'Mocambo', 'Flurys', 'Oh! Calcutta',
+        'Bhojohori Manna', '6 Ballygunge Place'
+      ]);
+    } else if (key.contains('darjeeling')) {
+      restaurants.addAll([
+        'Glenary\'s', 'Keventer\'s', 'Sonam\'s Kitchen', 'Hasty Tasty',
+        'Kunga Restaurant', 'Nathmull\'s Tea Room'
+      ]);
+    }
+    // Gujarat destinations
+    else if (key.contains('ahmedabad')) {
+      restaurants.addAll([
+        'Gordhan Thal', 'Agashiye', 'Vishalla', 'Swati Snacks', 'Honest Restaurant',
+        'Manek Chowk', 'Karnavati Dabeli'
+      ]);
+    }
+    // Hyderabad destinations
+    else if (key.contains('hyderabad')) {
+      restaurants.addAll([
+        'Paradise Biryani', 'Bawarchi', 'Shah Ghouse', 'Hotel Shadab', 'Chutneys',
+        'Ohri\'s', 'Cafe Bahar'
+      ]);
+    }
+    // Punjab destinations
+    else if (key.contains('amritsar')) {
+      restaurants.addAll([
+        'Kesar Da Dhaba', 'Bharawan Da Dhaba', 'Brothers Amritsari Dhaba',
+        'Makhan Fish & Chicken Corner', 'Surjit Food Plaza'
+      ]);
+    }
+    // Uttarakhand destinations
+    else if (key.contains('rishikesh')) {
+      restaurants.addAll([
+        'Chotiwala Restaurant', 'Little Buddha Cafe', 'Bistro Nirvana',
+        'Ganga Beach Restaurant', 'Devraj Coffee Corner'
+      ]);
+    } else if (key.contains('haridwar')) {
+      restaurants.addAll([
+        'Hoshiyar Puri', 'Chotiwala Restaurant', 'Mohini Restaurant',
+        'Bharat Restaurant', 'Dada Boudi Hotel'
+      ]);
+    }
+    // Generic fallback
+    else {
+      restaurants.addAll([
+        'Local Restaurant', 'Heritage Restaurant', 'Traditional Restaurant',
+        'Local Cuisine Restaurant', 'Regional Restaurant'
+      ]);
+    }
+    
+    if (restaurants.isEmpty) return null;
+    
+    // Select restaurant based on day (to vary across days)
+    final index = (day - 1) % restaurants.length;
+    return restaurants[index];
   }
 }

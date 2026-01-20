@@ -201,18 +201,31 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
       return;
     }
     
-    // Additional validation: Verify destination is a valid place
+    // Strict validation: Verify destination is a valid place (exact match only)
     final destination = _destinationController.text.trim();
+    
+    // Check for exact match (case-insensitive)
     final isDestinationValid = validPlaces.any(
-      (place) => place.toLowerCase() == destination.toLowerCase() ||
-                 (destination.length >= 3 && (
-                   place.toLowerCase().startsWith(destination.toLowerCase()) ||
-                   destination.toLowerCase().startsWith(place.toLowerCase())
-                 ))
+      (place) => place.toLowerCase().trim() == destination.toLowerCase().trim()
     );
     
     if (!isDestinationValid) {
-      _showErrorSnackBar('Please enter a valid destination from the list of available places.');
+      // Find closest matches for user feedback
+      final suggestions = validPlaces
+          .where((place) {
+            final placeLower = place.toLowerCase().trim();
+            final destLower = destination.toLowerCase().trim();
+            return placeLower.contains(destLower) || destLower.contains(placeLower) ||
+                   placeLower.startsWith(destLower.substring(0, destLower.length > 2 ? 2 : 1));
+          })
+          .take(3)
+          .toList();
+      
+      if (suggestions.isNotEmpty) {
+        _showErrorSnackBar('Invalid destination. Did you mean: ${suggestions.join(', ')}?');
+      } else {
+        _showErrorSnackBar('Please enter a valid destination. Valid places include: Kochi, Goa, Mumbai, Munnar, Alleppey, etc.');
+      }
       return;
     }
 
@@ -226,6 +239,18 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
         duration: Duration(seconds: 3),
       ),
     );
+    
+    // Final validation check - ensure destination is valid before generating
+    final finalDestination = destination.toLowerCase().trim();
+    final isValidFinal = validPlaces.any(
+      (place) => place.toLowerCase().trim() == finalDestination
+    );
+    
+    if (!isValidFinal) {
+      _showErrorSnackBar('Invalid destination. Cannot generate itinerary for non-valid places.');
+      setState(() => _isLoading = false);
+      return;
+    }
     
     try {
       final duration = _endDate!.difference(_startDate!).inDays + 1;
@@ -336,31 +361,30 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
                   
                   final enteredValue = value.trim();
                   
-                  // Strict validation: Only accept exact matches or close matches of valid places
+                  // Strict validation: Only accept exact matches (case-insensitive)
                   final isExactMatch = validPlaces.any(
-                    (place) => place.toLowerCase() == enteredValue.toLowerCase()
+                    (place) => place.toLowerCase().trim() == enteredValue.toLowerCase().trim()
                   );
                   
                   if (!isExactMatch) {
-                    // Also check for partial but significant matches (at least 3 characters for partial match)
-                    if (enteredValue.length >= 3) {
-                      final hasPartialMatch = validPlaces.any(
-                        (place) => place.toLowerCase().startsWith(enteredValue.toLowerCase()) ||
-                                   enteredValue.toLowerCase().startsWith(place.toLowerCase())
-                      );
-                      
-                      if (!hasPartialMatch) {
-                        // Get suggestions for invalid input
-                        final suggestions = validPlaces
-                            .where((place) => 
-                                place.toLowerCase().startsWith(enteredValue.substring(0, 2).toLowerCase()) ||
-                                place.toLowerCase().contains(enteredValue.toLowerCase()) ||
-                                enteredValue.toLowerCase().contains(place.toLowerCase()))
-                            .take(3)
-                            .join(', ');
-                        
-                        return 'Invalid destination. Valid places: ${suggestions.isEmpty ? 'Kochi, Goa, Mumbai, Bangalore' : suggestions}';
-                      }
+                    // Find closest matches for suggestions
+                    final suggestions = validPlaces
+                        .where((place) {
+                          final placeLower = place.toLowerCase().trim();
+                          final enteredLower = enteredValue.toLowerCase().trim();
+                          // Check if starts with or contains
+                          return placeLower.startsWith(enteredLower.substring(0, enteredLower.length > 2 ? 2 : 1)) ||
+                                 enteredLower.startsWith(placeLower.substring(0, placeLower.length > 2 ? 2 : 1)) ||
+                                 placeLower.contains(enteredLower) ||
+                                 enteredLower.contains(placeLower);
+                        })
+                        .take(5)
+                        .toList();
+                    
+                    if (suggestions.isNotEmpty) {
+                      return 'Invalid destination. Did you mean: ${suggestions.take(3).join(', ')}?';
+                    } else {
+                      return 'Invalid destination. Please enter a valid place (e.g., Kochi, Goa, Mumbai, Munnar, Alleppey)';
                     }
                   }
                   

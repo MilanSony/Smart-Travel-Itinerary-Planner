@@ -53,3 +53,5 @@ build/
 *.iml
 .gradle/
 .DS_Store
+
+*.md

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../services/group_trip_service.dart';
 import '../models/group_trip_model.dart';
 import '../config/group_trip_theme.dart';
+import 'offer_ride_screen.dart' show validPlaces;
 
 class CreateGroupTripScreen extends StatefulWidget {
   const CreateGroupTripScreen({Key? key}) : super(key: key);
@@ -66,6 +67,17 @@ class _CreateGroupTripScreenState extends State<CreateGroupTripScreen> {
   }
 
   Future<void> _selectEndDate() async {
+    // Require start date to be selected first
+    if (_startDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select start date first'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
     final DateTime firstDate = _startDate ?? DateTime.now();
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -78,6 +90,10 @@ class _CreateGroupTripScreenState extends State<CreateGroupTripScreen> {
     if (picked != null) {
       setState(() {
         _endDate = picked;
+        // Ensure end date is not before start date
+        if (_startDate != null && _endDate!.isBefore(_startDate!)) {
+          _endDate = _startDate!.add(const Duration(days: 1));
+        }
         // Calculate duration
         if (_startDate != null) {
           final duration = _endDate!.difference(_startDate!).inDays + 1;
@@ -117,17 +133,49 @@ class _CreateGroupTripScreenState extends State<CreateGroupTripScreen> {
       return;
     }
 
-    // Additional validation
-    if (_startDate != null && _endDate != null) {
-      if (_endDate!.isBefore(_startDate!)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('End date must be after start date'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
+    // Validate dates are selected
+    if (_startDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select start date'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_endDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select end date'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Validate end date is after start date
+    if (_endDate!.isBefore(_startDate!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('End date must be after start date'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Validate dates are not in the past
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_startDate!.isBefore(today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Start date cannot be in the past'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
     }
 
     setState(() {
@@ -295,29 +343,69 @@ class _CreateGroupTripScreenState extends State<CreateGroupTripScreen> {
               controller: _destinationController,
               decoration: InputDecoration(
                 labelText: 'Destination *',
-                hintText: 'e.g., Paris',
+                hintText: 'e.g., Kochi, Goa, Mumbai',
                 prefixIcon: const Icon(Icons.location_on),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
                 filled: true,
                 fillColor: Colors.grey[50],
+                helperText: 'Enter a valid place in India',
               ),
               textCapitalization: TextCapitalization.words,
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
                   return 'Please enter a destination';
                 }
-                if (value.trim().length < 2) {
+                final enteredValue = value.trim();
+                
+                if (enteredValue.length < 2) {
                   return 'Destination must be at least 2 characters';
                 }
-                if (value.trim().length > 100) {
+                if (enteredValue.length > 100) {
                   return 'Destination must be less than 100 characters';
                 }
+                
                 // Allow letters and spaces only (no numbers or punctuation)
-                if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value.trim())) {
+                if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(enteredValue)) {
                   return 'Destination should contain letters and spaces only';
                 }
+                
+                // Validate against valid places list
+                final isExactMatch = validPlaces.any(
+                  (place) => place.toLowerCase() == enteredValue.toLowerCase()
+                );
+                
+                if (!isExactMatch) {
+                  // Check for partial matches if input is at least 3 characters
+                  if (enteredValue.length >= 3) {
+                    final hasPartialMatch = validPlaces.any(
+                      (place) => place.toLowerCase().startsWith(enteredValue.toLowerCase()) ||
+                                 enteredValue.toLowerCase().startsWith(place.toLowerCase()) ||
+                                 place.toLowerCase().contains(enteredValue.toLowerCase()) ||
+                                 enteredValue.toLowerCase().contains(place.toLowerCase())
+                    );
+                    
+                    if (!hasPartialMatch) {
+                      // Get suggestions for invalid input
+                      final suggestions = validPlaces
+                          .where((place) => 
+                              place.toLowerCase().contains(enteredValue.toLowerCase()) ||
+                              enteredValue.toLowerCase().contains(place.toLowerCase()))
+                          .take(3)
+                          .toList();
+                      
+                      if (suggestions.isEmpty) {
+                        return 'Invalid destination. Please enter a valid place in India (e.g., Kochi, Goa, Mumbai, Bangalore)';
+                      } else {
+                        return 'Invalid destination. Did you mean: ${suggestions.join(', ')}?';
+                      }
+                    }
+                  } else {
+                    return 'Please enter a valid place in India (e.g., Kochi, Goa, Mumbai)';
+                  }
+                }
+                
                 return null;
               },
               maxLength: 100,
@@ -570,26 +658,37 @@ class _CreateGroupTripScreenState extends State<CreateGroupTripScreen> {
             TextFormField(
               controller: _meetingPointController,
               decoration: InputDecoration(
-                labelText: 'Pickup Spot (Optional)',
-                hintText: 'e.g., City Center',
+                labelText: 'Pickup Spot *',
+                hintText: 'e.g., City Center, Railway Station',
                 prefixIcon: const Icon(Icons.place),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
                 filled: true,
                 fillColor: Colors.grey[50],
+                helperText: 'Enter the meeting/pickup location',
               ),
               textCapitalization: TextCapitalization.words,
               validator: (value) {
-                if (value != null && value.trim().isNotEmpty) {
-                  if (value.trim().length < 3) {
-                    return 'Pickup spot must be at least 3 characters';
-                  }
-                  // Allow letters and spaces only (no numbers or punctuation)
-                  if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value.trim())) {
-                    return 'Pickup spot should contain letters and spaces only';
-                  }
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter pickup spot';
                 }
+                
+                final trimmedValue = value.trim();
+                
+                if (trimmedValue.length < 3) {
+                  return 'Pickup spot must be at least 3 characters';
+                }
+                
+                if (trimmedValue.length > 200) {
+                  return 'Pickup spot must be less than 200 characters';
+                }
+                
+                // Allow letters, numbers, spaces, and common place name characters
+                if (!RegExp(r"^[a-zA-Z0-9\s,\-\.']+$").hasMatch(trimmedValue)) {
+                  return 'Pickup spot contains invalid characters';
+                }
+                
                 return null;
               },
               maxLength: 200,
@@ -638,7 +737,7 @@ class _CreateGroupTripScreenState extends State<CreateGroupTripScreen> {
                   controller: _timeToReachController,
                   readOnly: true,
                   decoration: InputDecoration(
-                    labelText: 'Time to Reach (Optional)',
+                    labelText: 'Time to Reach *',
                     hintText: 'Select time',
                     prefixIcon: const Icon(Icons.access_time),
                     suffixIcon: _timeToReachTime != null
@@ -649,6 +748,8 @@ class _CreateGroupTripScreenState extends State<CreateGroupTripScreen> {
                                 _timeToReachTime = null;
                                 _timeToReachController.clear();
                               });
+                              // Trigger validation
+                              _formKey.currentState?.validate();
                             },
                           )
                         : null,
@@ -657,17 +758,26 @@ class _CreateGroupTripScreenState extends State<CreateGroupTripScreen> {
                     ),
                     filled: true,
                     fillColor: Colors.grey[50],
+                    helperText: 'Select the time to reach pickup spot',
                   ),
                   validator: (value) {
-                    if (value != null && value.trim().isNotEmpty) {
-                      // Accept both 24-hour (HH:MM like 14:30) and 12-hour (HH:MM AM/PM) formats
-                      final pattern = RegExp(
-                          r'^(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?(?:AM|PM))?',
-                          caseSensitive: false);
-                      if (!pattern.hasMatch(value.trim())) {
-                        return 'Invalid time format (expected HH:MM or HH:MM AM/PM)';
-                      }
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please select time to reach';
                     }
+                    
+                    // Validate that time is actually selected (not manually entered)
+                    if (_timeToReachTime == null) {
+                      return 'Please select time from the picker';
+                    }
+                    
+                    // Accept both 24-hour (HH:MM like 14:30) and 12-hour (HH:MM AM/PM) formats
+                    final pattern = RegExp(
+                        r'^(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?(?:AM|PM))?',
+                        caseSensitive: false);
+                    if (!pattern.hasMatch(value.trim())) {
+                      return 'Invalid time format (expected HH:MM or HH:MM AM/PM)';
+                    }
+                    
                     return null;
                   },
                   maxLength: 100,

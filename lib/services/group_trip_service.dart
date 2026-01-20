@@ -12,12 +12,10 @@ class GroupTripService {
   /// Get current user
   User? get currentUser => _auth.currentUser;
 
-  // App download link - Firebase App Distribution
-  // TODO: Replace with your actual Firebase App Distribution link after setup
-  // Get link from: Firebase Console → App Distribution → Releases → Copy Installation Link
-  // Format: https://appdistribution.firebase.dev/i/ABC123XYZ
+  // App download link - Google Drive
+  // Link to the APK file stored on Google Drive
   static const String appDownloadLink =
-      'https://appdistribution.firebase.dev/i/YOUR_LINK_HERE'; // Replace after Firebase setup
+      'https://drive.google.com/file/d/1ERDHO8nOkyuGL0nBbxzxWzbKUVmxOkXJ/view?usp=drive_link';
   static const String appWebsiteLink = 'https://tripgenie.app';
   static const String appName = 'Trip Genie';
 

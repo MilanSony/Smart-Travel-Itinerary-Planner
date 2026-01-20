@@ -6,16 +6,46 @@ import '../models/itinerary_model.dart';
 import 'itinerary_service.dart'; // For BudgetLevel enum and budget categorization baseline
 
 class BudgetEstimatorService {
-  // Default cost multipliers based on destination type and season
-  static const Map<String, double> _destinationCostMultipliers = {
-    'mumbai': 1.2,
-    'delhi': 1.1,
-    'bangalore': 1.15,
-    'goa': 1.0,
-    'kerala': 0.9,
-    'rajasthan': 0.85,
-    'himachal': 0.95,
-    'default': 1.0,
+  // Destination-specific base daily costs (per person) and multipliers
+  // These reflect actual cost differences between destinations
+  static const Map<String, Map<String, double>> _destinationCosts = {
+    // Tier 1 cities (expensive)
+    'mumbai': {'baseMultiplier': 1.4, 'baseCost': 2500},
+    'delhi': {'baseMultiplier': 1.3, 'baseCost': 2300},
+    'bangalore': {'baseMultiplier': 1.35, 'baseCost': 2400},
+    'hyderabad': {'baseMultiplier': 1.2, 'baseCost': 2200},
+    'chennai': {'baseMultiplier': 1.25, 'baseCost': 2250},
+    'pune': {'baseMultiplier': 1.15, 'baseCost': 2100},
+    
+    // Tourist destinations (moderate to expensive)
+    'goa': {'baseMultiplier': 1.1, 'baseCost': 2000},
+    'kerala': {'baseMultiplier': 0.95, 'baseCost': 1900},
+    'manali': {'baseMultiplier': 1.0, 'baseCost': 2000},
+    'shimla': {'baseMultiplier': 0.95, 'baseCost': 1900},
+    'darjeeling': {'baseMultiplier': 0.9, 'baseCost': 1800},
+    'ooty': {'baseMultiplier': 0.95, 'baseCost': 1900},
+    'mussorie': {'baseMultiplier': 0.95, 'baseCost': 1900},
+    
+    // Historical/cultural destinations (moderate)
+    'rajasthan': {'baseMultiplier': 0.85, 'baseCost': 1700},
+    'jaipur': {'baseMultiplier': 0.9, 'baseCost': 1800},
+    'udaipur': {'baseMultiplier': 0.9, 'baseCost': 1800},
+    'jodhpur': {'baseMultiplier': 0.85, 'baseCost': 1700},
+    'varanasi': {'baseMultiplier': 0.8, 'baseCost': 1600},
+    'agra': {'baseMultiplier': 0.85, 'baseCost': 1700},
+    
+    // Beach destinations
+    'andaman': {'baseMultiplier': 1.2, 'baseCost': 2200},
+    'lakshadweep': {'baseMultiplier': 1.15, 'baseCost': 2100},
+    'pondicherry': {'baseMultiplier': 0.95, 'baseCost': 1900},
+    
+    // Hill stations
+    'himachal': {'baseMultiplier': 0.95, 'baseCost': 1900},
+    'kashmir': {'baseMultiplier': 1.0, 'baseCost': 2000},
+    'leh': {'baseMultiplier': 1.1, 'baseCost': 2100},
+    
+    // Default (moderate cost)
+    'default': {'baseMultiplier': 1.0, 'baseCost': 2000},
   };
 
   // Default percentage allocations for budget categories
@@ -34,7 +64,7 @@ class BudgetEstimatorService {
   BudgetEstimatorService({String? apiKey}) 
       : _aiModel = apiKey != null && apiKey.isNotEmpty
           ? GenerativeModel(
-              model: 'gemini-pro',
+              model: 'gemini-1.5-pro', // Try gemini-1.5-pro
               apiKey: apiKey,
             )
           : null;
@@ -52,20 +82,29 @@ class BudgetEstimatorService {
     String? budgetLevel, // 'budget', 'moderate', 'luxury'
   }) async {
     final durationInDays = endDate.difference(startDate).inDays + 1;
-    final costMultiplier = _getDestinationCostMultiplier(destination);
     final seasonMultiplier = _getSeasonMultiplier(startDate);
     final budgetLevelEnum = _parseBudgetLevel(budgetLevel);
 
-    // Calculate base daily cost per person
+    // Get destination-specific costs
+    final destCosts = _getDestinationCosts(destination);
+    final destinationBaseCost = destCosts['baseCost']!;
+    final destinationMultiplier = destCosts['baseMultiplier']!;
+
+    // Calculate base daily cost per person based on budget level
     final baseDailyCostPerPerson = _calculateBaseDailyCost(
       budgetLevelEnum,
       destination,
       durationInDays,
     );
 
-    // Adjust for season and destination
-    final adjustedDailyCostPerPerson = baseDailyCostPerPerson * 
-        costMultiplier * 
+    // Apply destination-specific pricing (more impactful)
+    // Use destination base cost adjusted by budget level ratio
+    final budgetLevelRatio = baseDailyCostPerPerson / 2000; // Ratio to moderate level
+    final destinationAdjustedCost = destinationBaseCost * budgetLevelRatio;
+
+    // Adjust for season
+    final adjustedDailyCostPerPerson = destinationAdjustedCost * 
+        destinationMultiplier * 
         seasonMultiplier;
 
     // Calculate INDEPENDENT estimated total cost based on actual trip costs
@@ -125,7 +164,9 @@ class BudgetEstimatorService {
     );
 
     final budgetVariance = totalBudget - estimatedTotalCost;
-    final budgetUtilization = (estimatedTotalCost / totalBudget) * 100;
+    final double budgetUtilization = totalBudget > 0
+        ? (estimatedTotalCost / totalBudget) * 100.0
+        : 0.0;
 
     return BudgetEstimation(
       tripId: tripId,
@@ -207,14 +248,23 @@ class BudgetEstimatorService {
 
   // Helper methods
 
-  double _getDestinationCostMultiplier(String destination) {
-    final destLower = destination.toLowerCase();
-    for (final key in _destinationCostMultipliers.keys) {
-      if (destLower.contains(key)) {
-        return _destinationCostMultipliers[key]!;
+  Map<String, double> _getDestinationCosts(String destination) {
+    final destLower = destination.toLowerCase().trim();
+    
+    // Try exact match first
+    if (_destinationCosts.containsKey(destLower)) {
+      return Map<String, double>.from(_destinationCosts[destLower]!);
+    }
+    
+    // Try partial match (check if destination contains any key)
+    for (final key in _destinationCosts.keys) {
+      if (key != 'default' && destLower.contains(key)) {
+        return Map<String, double>.from(_destinationCosts[key]!);
       }
     }
-    return _destinationCostMultipliers['default']!;
+    
+    // Return default
+    return Map<String, double>.from(_destinationCosts['default']!);
   }
 
   double _getSeasonMultiplier(DateTime date) {

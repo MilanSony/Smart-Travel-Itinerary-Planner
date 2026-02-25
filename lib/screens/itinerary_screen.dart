@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/itinerary_model.dart';
 import '../services/pdf_service.dart';
 import '../services/itinerary_service.dart';
-import '../widgets/image_background.dart';
 import 'hotel_transport_suggestions_screen.dart';
 import 'budget_estimator_screen.dart';
-import 'budget_estimator_screen.dart';
+import 'weather_forecast_screen.dart';
 
 class ItineraryScreen extends StatelessWidget {
   final Itinerary itinerary;
@@ -34,6 +33,11 @@ class ItineraryScreen extends StatelessWidget {
             ),
           ),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.cloud, color: Colors.white),
+              onPressed: () => _showWeatherForecast(context),
+              tooltip: 'Weather Forecast',
+            ),
             IconButton(
               icon: const Icon(Icons.hotel, color: Colors.white),
               onPressed: () => _showHotelTransportSuggestions(context),
@@ -380,6 +384,15 @@ class ItineraryScreen extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  void _showWeatherForecast(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => WeatherForecastScreen(itinerary: itinerary),
       ),
     );
   }

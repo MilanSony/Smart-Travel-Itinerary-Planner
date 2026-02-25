@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
@@ -16,90 +17,171 @@ class HotelTransportService {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
+    // Try API with timeout, fallback to generated hotels if it fails
+    // Increased timeout to allow multiple endpoints to be tried (4 endpoints * 6s = 24s max, but we'll timeout at 15s)
     try {
-      // Create bounding box (approximately 30km radius for more results)
-      const double radius = 0.27; // ~30km in degrees
-      final bbox = '${centerLat - radius},${centerLon - radius},${centerLat + radius},${centerLon + radius}';
-
-      final overpassQuery = r'''
-        [out:json][timeout:25];
-        (
-          // Tourism-tagged accommodations (expanded list)
-          node["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast|chalet|camp_site|caravan_site)$"]["name"]($bbox);
-          way["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast|chalet|camp_site|caravan_site)$"]["name"]($bbox);
-          relation["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast|chalet|camp_site|caravan_site)$"]["name"]($bbox);
-          
-          // Amenity-tagged accommodations (some POIs only use amenity)
-          node["amenity"~"^(hotel|guest_house|hostel)$"]["name"]($bbox);
-          way["amenity"~"^(hotel|guest_house|hostel)$"]["name"]($bbox);
-          relation["amenity"~"^(hotel|guest_house|hostel)$"]["name"]($bbox);
-          
-          // Also include places with tourism tag even without name (we'll use fallback names)
-          node["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast)$"]($bbox);
-          way["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast)$"]($bbox);
-        );
-        out center meta;
-      '''.replaceAll(r'$bbox', bbox);
-
-      final overpassUrl = Uri.parse('https://overpass-api.de/api/interpreter');
-      final response = await http.post(
-        overpassUrl,
-        body: {'data': overpassQuery},
-        headers: {'User-Agent': _userAgent},
+      final hotels = await _fetchHotelsFromApi(
+        destination,
+        centerLat,
+        centerLon,
+        filters,
+        startDate,
+        endDate,
       ).timeout(
-        const Duration(seconds: 20),
+        const Duration(seconds: 20), // Increased timeout to allow Overpass mirrors to respond
         onTimeout: () {
-          throw Exception('Request timeout - please try again');
+          print('Hotel API timeout after 20s - using fallback');
+          return <HotelSuggestion>[];
         },
       );
 
-      if (response.statusCode != 200) {
-        throw Exception('Failed to fetch hotels. Status: ${response.statusCode}');
+      // If API returns empty results, use fallback
+      if (hotels.isEmpty) {
+        print('No hotels from API - using fallback');
+        return _generateFallbackHotels(destination, centerLat, centerLon, startDate, endDate);
       }
 
-      final data = json.decode(response.body);
-      final elements = data['elements'] as List;
+      return hotels;
+    } catch (e) {
+      print('Error fetching hotels: $e - using fallback');
+      // Always return fallback hotels if API fails
+      return _generateFallbackHotels(destination, centerLat, centerLon, startDate, endDate);
+    }
+  }
 
-      // Convert to HotelSuggestion objects
-      final hotels = elements
-          .map((element) {
-            final hotel = HotelSuggestion.fromOsmElement(element, centerLat, centerLon);
-            // Check availability based on dates if provided
-            bool isAvailable = hotel.isAvailable;
-            if (startDate != null && endDate != null) {
-              isAvailable = _checkHotelAvailability(hotel, startDate, endDate);
-            }
-            
-            // If unnamed, try to create a meaningful name from tags
-            if (hotel.name == 'Unnamed Hotel') {
-              final tags = element['tags'] as Map<String, dynamic>? ?? {};
-              final tourismType = tags['tourism']?.toString() ?? tags['amenity']?.toString() ?? 'hotel';
-              final hotelType = tourismType.replaceAll('_', ' ').split(' ').map((w) => 
-                w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1)
-              ).join(' ');
-              return HotelSuggestion(
-                id: hotel.id,
-                name: '$hotelType ${hotel.id.substring(0, 6)}',
-                description: hotel.description,
-                address: hotel.address,
-                phone: hotel.phone,
-                website: hotel.website,
-                lat: hotel.lat,
-                lon: hotel.lon,
-                rating: hotel.rating,
-                pricePerNight: hotel.pricePerNight,
-                hotelType: hotel.hotelType,
-                imageUrl: hotel.imageUrl,
-                distanceFromCenter: hotel.distanceFromCenter,
-                facilities: hotel.facilities,
-                isAvailable: isAvailable,
-                additionalInfo: hotel.additionalInfo,
-              );
-            }
-            // Update availability for named hotels
+  /// Public helper to generate fallback hotels for a destination.
+  /// Useful for UI layers that want to force-show suggestions if everything else failed.
+  List<HotelSuggestion> getFallbackHotels({
+    required String destination,
+    required double centerLat,
+    required double centerLon,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    return _generateFallbackHotels(destination, centerLat, centerLon, startDate, endDate);
+  }
+
+  /// Internal method to fetch hotels from Overpass API
+  Future<List<HotelSuggestion>> _fetchHotelsFromApi(
+    String destination,
+    double centerLat,
+    double centerLon,
+    HotelTransportFilters? filters,
+    DateTime? startDate,
+    DateTime? endDate,
+  ) async {
+    // Create bounding box (approximately 30km radius for more results)
+    const double radius = 0.27; // ~30km in degrees
+    final bbox = '${centerLat - radius},${centerLon - radius},${centerLat + radius},${centerLon + radius}';
+
+    final overpassQuery = r'''
+      [out:json][timeout:5];
+      (
+        // Tourism-tagged accommodations (expanded list)
+        node["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast|chalet|camp_site|caravan_site)$"]["name"](__BBOX__);
+        way["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast|chalet|camp_site|caravan_site)$"]["name"](__BBOX__);
+        relation["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast|chalet|camp_site|caravan_site)$"]["name"](__BBOX__);
+
+        // Amenity-tagged accommodations (some POIs only use amenity)
+        node["amenity"~"^(hotel|guest_house|hostel)$"]["name"](__BBOX__);
+        way["amenity"~"^(hotel|guest_house|hostel)$"]["name"](__BBOX__);
+        relation["amenity"~"^(hotel|guest_house|hostel)$"]["name"](__BBOX__);
+
+        // Also include places with tourism tag even without name (we'll use fallback names)
+        node["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast)$"](__BBOX__);
+        way["tourism"~"^(hotel|hostel|guest_house|resort|apartment|motel|bed_and_breakfast)$"](__BBOX__);
+      );
+      out center meta;
+    '''.replaceAll('__BBOX__', bbox);
+
+    // Try multiple Overpass endpoints with per-endpoint timeout and retries for robustness
+    final finalQuery = overpassQuery;
+    final overpassEndpoints = [
+      Uri.parse('https://overpass-api.de/api/interpreter'),
+      Uri.parse('https://lz4.overpass-api.de/api/interpreter'),
+      Uri.parse('https://overpass.openstreetmap.fr/api/interpreter'),
+      Uri.parse('https://overpass.kumi.systems/api/interpreter'),
+    ];
+
+    http.Response? response;
+    Exception? lastError;
+    for (int i = 0; i < overpassEndpoints.length; i++) {
+      final endpoint = overpassEndpoints[i];
+      try {
+        print('Trying transport endpoint ${i + 1}/${overpassEndpoints.length}: ${endpoint.host}');
+        response = await http.post(
+          endpoint,
+          body: {'data': finalQuery},
+          headers: {'User-Agent': _userAgent},
+        ).timeout(
+          const Duration(seconds: 10), // Increased per-endpoint timeout for reliability
+          onTimeout: () {
+            throw TimeoutException('Overpass API request timeout');
+          },
+        );
+        // If we got a successful response, break out and use it
+        if (response.statusCode == 200) {
+          print('Transport endpoint ${endpoint.host} succeeded');
+          break;
+        }
+        lastError = Exception('Endpoint ${endpoint.host} returned status ${response.statusCode}');
+        print('Transport endpoint ${endpoint.host} failed with status ${response.statusCode}');
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
+        print('Transport endpoint ${endpoint.host} error: $e');
+        // Try next endpoint
+        continue;
+      }
+    }
+
+    if (response == null || response.statusCode != 200) {
+      // No endpoint returned a 200 OK; return empty list to trigger fallback
+      print('All hotel endpoints failed. Last error: $lastError');
+      return [];
+    }
+
+    // Parse JSON with error handling
+    Map<String, dynamic> data;
+    try {
+      data = json.decode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      print('Failed to parse hotel API response: $e');
+      return []; // Return empty to trigger fallback
+    }
+
+    // Check if elements exist
+    if (!data.containsKey('elements')) {
+      print('Invalid hotel API response: missing elements');
+      return []; // Return empty to trigger fallback
+    }
+
+    final elements = data['elements'] as List? ?? [];
+
+    if (elements.isEmpty) {
+      print('No hotel elements in API response');
+      return []; // Return empty to trigger fallback
+    }
+
+    // Convert to HotelSuggestion objects
+    final hotels = elements
+        .map((element) {
+          final hotel = HotelSuggestion.fromOsmElement(element, centerLat, centerLon);
+          // Check availability based on dates if provided
+          bool isAvailable = hotel.isAvailable;
+          if (startDate != null && endDate != null) {
+            isAvailable = _checkHotelAvailability(hotel, startDate, endDate);
+          }
+
+          // If unnamed, try to create a meaningful name from tags
+          if (hotel.name == 'Unnamed Hotel') {
+            final tags = element['tags'] as Map<String, dynamic>? ?? {};
+            final tourismType = tags['tourism']?.toString() ?? tags['amenity']?.toString() ?? 'hotel';
+            final hotelType = tourismType.replaceAll('_', ' ').split(' ').map((w) =>
+              w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1)
+            ).join(' ');
             return HotelSuggestion(
               id: hotel.id,
-              name: hotel.name,
+              name: '$hotelType ${hotel.id.substring(0, 6)}',
               description: hotel.description,
               address: hotel.address,
               phone: hotel.phone,
@@ -115,40 +197,55 @@ class HotelTransportService {
               isAvailable: isAvailable,
               additionalInfo: hotel.additionalInfo,
             );
-          })
-          .toList();
+          }
+          // Update availability for named hotels
+          return HotelSuggestion(
+            id: hotel.id,
+            name: hotel.name,
+            description: hotel.description,
+            address: hotel.address,
+            phone: hotel.phone,
+            website: hotel.website,
+            lat: hotel.lat,
+            lon: hotel.lon,
+            rating: hotel.rating,
+            pricePerNight: hotel.pricePerNight,
+            hotelType: hotel.hotelType,
+            imageUrl: hotel.imageUrl,
+            distanceFromCenter: hotel.distanceFromCenter,
+            facilities: hotel.facilities,
+            isAvailable: isAvailable,
+            additionalInfo: hotel.additionalInfo,
+          );
+        })
+        .toList();
 
-      // Deduplicate by name + coordinates (rounded)
-      final hotelsDeduped = _dedupeHotels(hotels);
+    // Deduplicate by name + coordinates (rounded)
+    final hotelsDeduped = _dedupeHotels(hotels);
 
-      // Apply filters
-      var filteredHotels = hotelsDeduped;
-      if (filters != null) {
-        filteredHotels = _filterHotels(hotelsDeduped, filters);
-      }
-
-      // Sort by rating (if available) or distance
-      filteredHotels.sort((a, b) {
-        // Prioritize hotels with ratings
-        if (a.rating != null && b.rating == null) return -1;
-        if (a.rating == null && b.rating != null) return 1;
-        if (a.rating != null && b.rating != null) {
-          final ratingDiff = b.rating!.compareTo(a.rating!);
-          if (ratingDiff != 0) return ratingDiff;
-        }
-        // Then by distance
-        if (a.distanceFromCenter != null && b.distanceFromCenter != null) {
-          return a.distanceFromCenter!.compareTo(b.distanceFromCenter!);
-        }
-        return 0;
-      });
-
-      return filteredHotels.take(_maxResults).toList();
-    } catch (e) {
-      print('Error fetching hotels: $e');
-      // Return fallback hotels if API fails
-      return _generateFallbackHotels(destination, centerLat, centerLon, startDate, endDate);
+    // Apply filters
+    var filteredHotels = hotelsDeduped;
+    if (filters != null) {
+      filteredHotels = _filterHotels(hotelsDeduped, filters);
     }
+
+    // Sort by rating (if available) or distance
+    filteredHotels.sort((a, b) {
+      // Prioritize hotels with ratings
+      if (a.rating != null && b.rating == null) return -1;
+      if (a.rating == null && b.rating != null) return 1;
+      if (a.rating != null && b.rating != null) {
+        final ratingDiff = b.rating!.compareTo(a.rating!);
+        if (ratingDiff != 0) return ratingDiff;
+      }
+      // Then by distance
+      if (a.distanceFromCenter != null && b.distanceFromCenter != null) {
+        return a.distanceFromCenter!.compareTo(b.distanceFromCenter!);
+      }
+      return 0;
+    });
+
+    return filteredHotels.take(_maxResults).toList();
   }
 
   /// Fetch transport options near a destination
@@ -158,126 +255,216 @@ class HotelTransportService {
     required double centerLon,
     HotelTransportFilters? filters,
   }) async {
+    // Try API with timeout, fallback to generated transport if it fails
+    // Increased timeout to allow multiple endpoints to be tried
     try {
-      // Create bounding box (30km radius)
-      const double radius = 0.27; // ~30km in degrees
-      final bbox = '${centerLat - radius},${centerLon - radius},${centerLat + radius},${centerLon + radius}';
-
-      final overpassQuery = r'''
-        [out:json][timeout:25];
-        (
-          // Bus, taxi, car rental
-          node["amenity"~"^(bus_station|taxi|car_rental)$"]["name"]($bbox);
-          way["amenity"~"^(bus_station|taxi|car_rental)$"]["name"]($bbox);
-          relation["amenity"~"^(bus_station|taxi|car_rental)$"]["name"]($bbox);
-          
-          // Public transport hubs
-          node["public_transport"]["name"]($bbox);
-          way["public_transport"]["name"]($bbox);
-          relation["public_transport"]["name"]($bbox);
-          
-          // Train / metro
-          node["railway"="station"]["name"]($bbox);
-          way["railway"="station"]["name"]($bbox);
-          relation["railway"="station"]["name"]($bbox);
-          
-          // Airports and ferry terminals
-          node["aeroway"="aerodrome"]["name"]($bbox);
-          way["aeroway"="aerodrome"]["name"]($bbox);
-          relation["aeroway"="aerodrome"]["name"]($bbox);
-          
-          node["amenity"="ferry_terminal"]["name"]($bbox);
-          way["amenity"="ferry_terminal"]["name"]($bbox);
-          relation["amenity"="ferry_terminal"]["name"]($bbox);
-        );
-        out center meta;
-      '''.replaceAll(r'$bbox', bbox);
-
-      final overpassUrl = Uri.parse('https://overpass-api.de/api/interpreter');
-      final response = await http.post(
-        overpassUrl,
-        body: {'data': overpassQuery},
-        headers: {'User-Agent': _userAgent},
+      final transport = await _fetchTransportFromApi(
+        destination,
+        centerLat,
+        centerLon,
+        filters,
       ).timeout(
-        const Duration(seconds: 20),
+        const Duration(seconds: 10), // Reduced for faster fallback
         onTimeout: () {
-          throw Exception('Request timeout - please try again');
+          print('Transport API timeout after 10s - using fallback');
+          return <TransportSuggestion>[];
         },
       );
 
-      if (response.statusCode != 200) {
-        throw Exception('Failed to fetch transport options. Status: ${response.statusCode}');
+      // If API returns empty results, use fallback
+      if (transport.isEmpty) {
+        print('No transport from API - using fallback');
+        return _generateFallbackTransport(destination, centerLat, centerLon);
       }
 
-      final data = json.decode(response.body);
-      final elements = data['elements'] as List;
-
-      // Convert to TransportSuggestion objects and estimate costs
-      final transportOptionsRaw = elements
-          .map((element) {
-            final transport = TransportSuggestion.fromOsmElement(element, centerLat, centerLon);
-            // Create meaningful name if unnamed
-            String finalName = transport.name;
-            if (finalName == 'Unnamed Place' || finalName.isEmpty) {
-              final tags = element['tags'] as Map<String, dynamic>? ?? {};
-              final type = tags['amenity'] ?? tags['public_transport'] ?? tags['railway'] ?? tags['aeroway'] ?? 'transport';
-              final typeStr = type.toString().replaceAll('_', ' ').split(' ').map((w) => 
-                w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1)
-              ).join(' ');
-              finalName = '$typeStr Station';
-            }
-            // Create new transport with estimated cost
-            final estimatedCost = _estimateTransportCost(transport.type);
-            return TransportSuggestion(
-              id: transport.id,
-              name: finalName,
-              type: transport.type,
-              description: transport.description,
-              address: transport.address,
-              phone: transport.phone,
-              website: transport.website,
-              lat: transport.lat,
-              lon: transport.lon,
-              estimatedCost: estimatedCost,
-              distanceFromCenter: transport.distanceFromCenter,
-              operatingHours: transport.operatingHours,
-              facilities: transport.facilities,
-              routeInfo: transport.routeInfo,
-              isAvailable: transport.isAvailable,
-              additionalInfo: transport.additionalInfo,
-            );
-          })
-          .whereType<TransportSuggestion>()
-          .toList();
-
-      // Deduplicate transport entries by name + coordinates (rounded)
-      final transportOptions = _dedupeTransport(transportOptionsRaw);
-
-      // Apply filters
-      var filteredTransport = transportOptions;
-      if (filters != null) {
-        filteredTransport = _filterTransport(transportOptions, filters);
-      }
-
-      // Sort by distance first, then cost
-      filteredTransport.sort((a, b) {
-        if (a.distanceFromCenter != null && b.distanceFromCenter != null) {
-          return a.distanceFromCenter!.compareTo(b.distanceFromCenter!);
-        }
-        if (a.distanceFromCenter != null) return -1;
-        if (b.distanceFromCenter != null) return 1;
-        if (a.estimatedCost != null && b.estimatedCost != null) {
-          return a.estimatedCost!.compareTo(b.estimatedCost!);
-        }
-        return 0;
-      });
-
-      return filteredTransport.take(_maxResults).toList();
+      return transport;
     } catch (e) {
-      print('Error fetching transport options: $e');
-      // Return fallback transport options if API fails
+      print('Error fetching transport: $e - using fallback');
+      // Always return fallback transport if API fails
       return _generateFallbackTransport(destination, centerLat, centerLon);
     }
+  }
+
+  /// Public helper to generate fallback transport options for a destination.
+  /// Useful for UI layers that want to force-show suggestions if everything else failed.
+  List<TransportSuggestion> getFallbackTransport({
+    required String destination,
+    required double centerLat,
+    required double centerLon,
+  }) {
+    return _generateFallbackTransport(destination, centerLat, centerLon);
+  }
+
+  /// Internal method to fetch transport from Overpass API
+  Future<List<TransportSuggestion>> _fetchTransportFromApi(
+    String destination,
+    double centerLat,
+    double centerLon,
+    HotelTransportFilters? filters,
+  ) async {
+    // Create bounding box (30km radius)
+    const double radius = 0.27; // ~30km in degrees
+    final bbox = '${centerLat - radius},${centerLon - radius},${centerLat + radius},${centerLon + radius}';
+
+    final overpassQuery = r'''
+      [out:json][timeout:5];
+      (
+        // Bus, taxi, car rental
+        node["amenity"~"^(bus_station|taxi|car_rental)$"]["name"](__BBOX__);
+        way["amenity"~"^(bus_station|taxi|car_rental)$"]["name"](__BBOX__);
+        relation["amenity"~"^(bus_station|taxi|car_rental)$"]["name"](__BBOX__);
+
+        // Public transport hubs
+        node["public_transport"]["name"](__BBOX__);
+        way["public_transport"]["name"](__BBOX__);
+        relation["public_transport"]["name"](__BBOX__);
+
+        // Train / metro
+        node["railway"="station"]["name"](__BBOX__);
+        way["railway"="station"]["name"](__BBOX__);
+        relation["railway"="station"]["name"](__BBOX__);
+
+        // Airports and ferry terminals
+        node["aeroway"="aerodrome"]["name"](__BBOX__);
+        way["aeroway"="aerodrome"]["name"](__BBOX__);
+        relation["aeroway"="aerodrome"]["name"](__BBOX__);
+
+        node["amenity"="ferry_terminal"]["name"](__BBOX__);
+        way["amenity"="ferry_terminal"]["name"](__BBOX__);
+        relation["amenity"="ferry_terminal"]["name"](__BBOX__);
+      );
+      out center meta;
+    '''.replaceAll('__BBOX__', bbox);
+
+    // Try multiple Overpass endpoints with per-endpoint timeout and retries for robustness
+    final finalQuery = overpassQuery;
+    final overpassEndpoints = [
+      Uri.parse('https://overpass-api.de/api/interpreter'),
+      Uri.parse('https://lz4.overpass-api.de/api/interpreter'),
+      Uri.parse('https://overpass.openstreetmap.fr/api/interpreter'),
+      Uri.parse('https://overpass.kumi.systems/api/interpreter'),
+    ];
+
+    http.Response? response;
+    Exception? lastError;
+    for (int i = 0; i < overpassEndpoints.length; i++) {
+      final endpoint = overpassEndpoints[i];
+      try {
+        print('Trying transport endpoint ${i + 1}/${overpassEndpoints.length}: ${endpoint.host}');
+        response = await http.post(
+          endpoint,
+          body: {'data': finalQuery},
+          headers: {'User-Agent': _userAgent},
+        ).timeout(
+          const Duration(seconds: 4), // Further reduced for faster fallback
+          onTimeout: () {
+            throw TimeoutException('Overpass API request timeout');
+          },
+        );
+        // If we got a successful response, break out and use it
+        if (response.statusCode == 200) {
+          print('Transport endpoint ${endpoint.host} succeeded');
+          break;
+        }
+        lastError = Exception('Endpoint ${endpoint.host} returned status ${response.statusCode}');
+        print('Transport endpoint ${endpoint.host} failed with status ${response.statusCode}');
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
+        print('Transport endpoint ${endpoint.host} error: $e');
+        // Try next endpoint
+        continue;
+      }
+    }
+
+    if (response == null || response.statusCode != 200) {
+      // No endpoint returned a 200 OK; return empty list to trigger fallback
+      print('All transport endpoints failed. Last error: $lastError');
+      return [];
+    }
+
+    // Parse JSON with error handling
+    Map<String, dynamic> data;
+    try {
+      data = json.decode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      print('Failed to parse transport API response: $e');
+      return []; // Return empty to trigger fallback
+    }
+
+    // Check if elements exist
+    if (!data.containsKey('elements')) {
+      print('Invalid transport API response: missing elements');
+      return []; // Return empty to trigger fallback
+    }
+
+    final elements = data['elements'] as List? ?? [];
+
+    if (elements.isEmpty) {
+      print('No transport elements in API response');
+      return []; // Return empty to trigger fallback
+    }
+
+    // Convert to TransportSuggestion objects and estimate costs
+    final transportOptionsRaw = elements
+        .map((element) {
+          final transport = TransportSuggestion.fromOsmElement(element, centerLat, centerLon);
+          // Create meaningful name if unnamed
+          String finalName = transport.name;
+          if (finalName == 'Unnamed Place' || finalName.isEmpty) {
+            final tags = element['tags'] as Map<String, dynamic>? ?? {};
+            final type = tags['amenity'] ?? tags['public_transport'] ?? tags['railway'] ?? tags['aeroway'] ?? 'transport';
+            final typeStr = type.toString().replaceAll('_', ' ').split(' ').map((w) =>
+              w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1)
+            ).join(' ');
+            finalName = '$typeStr Station';
+          }
+          // Create new transport with estimated cost
+          final estimatedCost = _estimateTransportCost(transport.type);
+          return TransportSuggestion(
+            id: transport.id,
+            name: finalName,
+            type: transport.type,
+            description: transport.description,
+            address: transport.address,
+            phone: transport.phone,
+            website: transport.website,
+            lat: transport.lat,
+            lon: transport.lon,
+            estimatedCost: estimatedCost,
+            distanceFromCenter: transport.distanceFromCenter,
+            operatingHours: transport.operatingHours,
+            facilities: transport.facilities,
+            routeInfo: transport.routeInfo,
+            isAvailable: transport.isAvailable,
+            additionalInfo: transport.additionalInfo,
+          );
+        })
+        .whereType<TransportSuggestion>()
+        .toList();
+
+    // Deduplicate transport entries by name + coordinates (rounded)
+    final transportOptions = _dedupeTransport(transportOptionsRaw);
+
+    // Apply filters
+    var filteredTransport = transportOptions;
+    if (filters != null) {
+      filteredTransport = _filterTransport(transportOptions, filters);
+    }
+
+    // Sort by distance first, then cost
+    filteredTransport.sort((a, b) {
+      if (a.distanceFromCenter != null && b.distanceFromCenter != null) {
+        return a.distanceFromCenter!.compareTo(b.distanceFromCenter!);
+      }
+      if (a.distanceFromCenter != null) return -1;
+      if (b.distanceFromCenter != null) return 1;
+      if (a.estimatedCost != null && b.estimatedCost != null) {
+        return a.estimatedCost!.compareTo(b.estimatedCost!);
+      }
+      return 0;
+    });
+
+    return filteredTransport.take(_maxResults).toList();
   }
 
   List<HotelSuggestion> _dedupeHotels(List<HotelSuggestion> hotels) {
@@ -449,20 +636,20 @@ class HotelTransportService {
   bool _checkHotelAvailability(HotelSuggestion hotel, DateTime startDate, DateTime endDate) {
     // Calculate number of nights
     final nights = endDate.difference(startDate).inDays;
-    
+
     // Use hotel ID as seed for consistent availability simulation
     final hash = hotel.id.hashCode.abs();
     final availabilitySeed = hash % 100;
-    
+
     // Simulate availability logic:
     // - Higher rated hotels (4.5+) are more likely to be booked (70% available)
     // - Mid-range hotels (4.0-4.5) have good availability (85% available)
     // - Budget hotels have high availability (90% available)
     // - Longer stays reduce availability slightly
     // - Weekend dates reduce availability
-    
+
     double availabilityChance = 0.9; // Default 90% available
-    
+
     if (hotel.rating != null) {
       if (hotel.rating! >= 4.5) {
         availabilityChance = 0.70; // 70% available for luxury hotels
@@ -472,7 +659,7 @@ class HotelTransportService {
         availabilityChance = 0.90; // 90% available for budget
       }
     }
-    
+
     // Reduce availability for longer stays
     if (nights > 5) {
       availabilityChance *= 0.9;
@@ -480,7 +667,7 @@ class HotelTransportService {
     if (nights > 10) {
       availabilityChance *= 0.85;
     }
-    
+
     // Check if dates include weekends (Friday, Saturday, Sunday)
     bool hasWeekend = false;
     for (var i = 0; i <= nights; i++) {
@@ -491,21 +678,21 @@ class HotelTransportService {
         break;
       }
     }
-    
+
     if (hasWeekend) {
       availabilityChance *= 0.85; // 15% reduction for weekend bookings
     }
-    
+
     // Check if dates are in peak season (Dec-Feb, May-Jul in India)
     final month = startDate.month;
     bool isPeakSeason = (month >= 12 || month <= 2) || (month >= 5 && month <= 7);
     if (isPeakSeason) {
       availabilityChance *= 0.80; // 20% reduction during peak season
     }
-    
+
     // Use hash to determine if this specific hotel is available
     final isAvailable = (availabilitySeed / 100.0) < availabilityChance;
-    
+
     return isAvailable;
   }
 
@@ -617,7 +804,7 @@ class HotelTransportService {
         centerLon: lon,
       ),
     ];
-    
+
     // Check availability for all fallback hotels if dates are provided
     if (startDate != null && endDate != null) {
       return fallbackHotels.map((hotel) {
@@ -642,7 +829,7 @@ class HotelTransportService {
         );
       }).toList();
     }
-    
+
     return fallbackHotels;
   }
 
@@ -667,12 +854,16 @@ class HotelTransportService {
       distance,
       id,
     );
+    final destination = _extractDestinationFromFallbackName(name);
+    final addressWithDestination = destination == null || destination.isEmpty
+        ? address
+        : '$address, $destination';
 
     return HotelSuggestion(
       id: id,
       name: name,
       description: description,
-      address: address,
+      address: addressWithDestination,
       phone: phone,
       lat: lat,
       lon: lon,
@@ -683,6 +874,16 @@ class HotelTransportService {
       facilities: const ['WiFi', 'Parking', 'Breakfast', 'Air Conditioning'],
       isAvailable: true,
     );
+  }
+
+  /// For fallback items named like "Budget Hotel in Kochi", extract "Kochi" so
+  /// addresses look correctly tied to the selected destination.
+  String? _extractDestinationFromFallbackName(String name) {
+    final lower = name.toLowerCase();
+    final idx = lower.lastIndexOf(' in ');
+    if (idx < 0) return null;
+    final dest = name.substring(idx + 4).trim();
+    return dest.isEmpty ? null : dest;
   }
 
   double _calculateDistanceKm(double lat1, double lon1, double lat2, double lon2) {
@@ -784,4 +985,3 @@ class HotelTransportService {
     ];
   }
 }
-

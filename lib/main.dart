@@ -3,7 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'providers/theme_provider.dart';
-import 'screens/auth_gate.dart';
+import 'screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +31,7 @@ class TripGenieApp extends StatelessWidget {
           // ✅ UPDATED: Use the new 'themeData' getter to apply the theme globally
           theme: themeProvider.themeData,
           debugShowCheckedModeBanner: false,
-          home: const AuthGate(),
+          home: const SplashScreen(),
         );
       },
     );

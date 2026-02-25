@@ -36,6 +36,10 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
   List<TransportSuggestion> _transportOptions = [];
   String _sortBy = 'distance'; // distance | rating | price
 
+  // Keep last-used coordinates so we can generate UI fallbacks if needed
+  double? _lastCenterLat;
+  double? _lastCenterLon;
+
   // Filter state
   HotelTransportFilters _filters = HotelTransportFilters();
   bool _showFilters = false;
@@ -70,14 +74,15 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
     setState(() => _isLoading = true);
 
     try {
-      // Validate destination name - only letters and spaces allowed (no numbers)
+      // Validate destination name (relaxed): allow common real-world names like
+      // "NH 66", "Sector 17", "Old Goa", etc. Only block empty.
       final destination = widget.destination.trim();
-      if (destination.isEmpty || RegExp(r'[0-9]').hasMatch(destination)) {
+      if (destination.isEmpty) {
         setState(() => _isLoading = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Invalid destination name. Only letters and spaces are allowed (no numbers).'),
+              content: Text('Please enter a destination name.'),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 3),
             ),
@@ -103,34 +108,70 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
         }
       }
 
-      // Fetch hotels and transport
-      final hotels = await _service.fetchHotels(
-        destination: widget.destination,
-        centerLat: centerLat,
-        centerLon: centerLon,
-        filters: _filters,
-        startDate: widget.startDate,
-        endDate: widget.endDate,
-      );
+      // Store coordinates for possible UI-level fallbacks
+      _lastCenterLat = centerLat;
+      _lastCenterLon = centerLon;
 
-      final transport = await _service.fetchTransportOptions(
-        destination: widget.destination,
-        centerLat: centerLat,
-        centerLon: centerLon,
-        filters: _filters,
-      );
+      // Fetch hotels and transport independently so one failure doesn't blank everything.
+      // Also run them in parallel for better perceived speed.
+      final results = await Future.wait([
+        _service.fetchHotels(
+          destination: widget.destination,
+          centerLat: centerLat,
+          centerLon: centerLon,
+          filters: _filters,
+          startDate: widget.startDate,
+          endDate: widget.endDate,
+        ).catchError((e) {
+          debugPrint('fetchHotels failed: $e');
+          return <HotelSuggestion>[];
+        }),
+        _service.fetchTransportOptions(
+          destination: widget.destination,
+          centerLat: centerLat,
+          centerLon: centerLon,
+          filters: _filters,
+        ).catchError((e) {
+          debugPrint('fetchTransportOptions failed: $e');
+          return <TransportSuggestion>[];
+        }),
+      ]);
+
+      final hotels = (results[0] as List<HotelSuggestion>);
+      final transport = (results[1] as List<TransportSuggestion>);
+
+      // Absolute safety net: if anything returned empty, force-generate fallback lists
+      var finalHotels = hotels;
+      if (finalHotels.isEmpty && _lastCenterLat != null && _lastCenterLon != null) {
+        finalHotels = _service.getFallbackHotels(
+          destination: widget.destination,
+          centerLat: _lastCenterLat!,
+          centerLon: _lastCenterLon!,
+          startDate: widget.startDate,
+          endDate: widget.endDate,
+        );
+      }
+
+      var finalTransport = transport;
+      if (finalTransport.isEmpty && _lastCenterLat != null && _lastCenterLon != null) {
+        finalTransport = _service.getFallbackTransport(
+          destination: widget.destination,
+          centerLat: _lastCenterLat!,
+          centerLon: _lastCenterLon!,
+        );
+      }
 
       setState(() {
-        _hotels = hotels;
-        _transportOptions = transport;
+        _hotels = finalHotels;
+        _transportOptions = finalTransport;
         _applySorting();
         _isLoading = false;
       });
 
       // Inform user with a brief status snackbar
       if (mounted) {
-        final hotelCount = hotels.length;
-        final transportCount = transport.length;
+        final hotelCount = finalHotels.length;
+        final transportCount = finalTransport.length;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Found $hotelCount hotels and $transportCount transport options'),
@@ -140,12 +181,34 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
         );
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      // Final guard: even if something unexpected fails above, still show fallback data.
+      final lat = _lastCenterLat ?? widget.destinationLat ?? 12.9716;
+      final lon = _lastCenterLon ?? widget.destinationLon ?? 77.5946;
+      final fallbackHotels = _service.getFallbackHotels(
+        destination: widget.destination,
+        centerLat: lat,
+        centerLon: lon,
+        startDate: widget.startDate,
+        endDate: widget.endDate,
+      );
+      final fallbackTransport = _service.getFallbackTransport(
+        destination: widget.destination,
+        centerLat: lat,
+        centerLon: lon,
+      );
+
+      setState(() {
+        _hotels = fallbackHotels;
+        _transportOptions = fallbackTransport;
+        _applySorting();
+        _isLoading = false;
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading suggestions: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text('Live data unavailable right now — showing generated suggestions.'),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -769,6 +832,83 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
                 ),
               ),
             ],
+            // Google Maps Button - View on Map
+            if (hotel.lat != null && hotel.lon != null) ...[
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () async {
+                  try {
+                    // Create Google Maps URL with hotel coordinates
+                    final googleMapsUrl = Uri.parse(
+                      'https://www.google.com/maps/search/?api=1&query=${hotel.lat},${hotel.lon}',
+                    );
+                    
+                    // Try to launch Google Maps
+                    final launched = await launchUrl(
+                      googleMapsUrl,
+                      mode: LaunchMode.externalApplication,
+                    );
+                    
+                    if (!launched && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not open Google Maps. Please install Google Maps app.'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error opening Google Maps: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.map, size: 20, color: Colors.red[700]),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'View on Map',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Open in Google Maps',
+                            style: TextStyle(
+                              color: Colors.red[700],
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(Icons.open_in_new, size: 16, color: Colors.red[700]),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             // Contact Number - Always displayed
             if (hotel.phone != null && hotel.phone!.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -1102,6 +1242,83 @@ class _HotelTransportSuggestionsScreenState extends State<HotelTransportSuggesti
                     ),
                   ),
                 ],
+              ),
+            ],
+            // Google Maps Button - View on Map
+            if (transport.lat != null && transport.lon != null) ...[
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () async {
+                  try {
+                    // Create Google Maps URL with transport coordinates
+                    final googleMapsUrl = Uri.parse(
+                      'https://www.google.com/maps/search/?api=1&query=${transport.lat},${transport.lon}',
+                    );
+                    
+                    // Try to launch Google Maps
+                    final launched = await launchUrl(
+                      googleMapsUrl,
+                      mode: LaunchMode.externalApplication,
+                    );
+                    
+                    if (!launched && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not open Google Maps. Please install Google Maps app.'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error opening Google Maps: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.map, size: 20, color: Colors.red[700]),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'View on Map',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Open in Google Maps',
+                            style: TextStyle(
+                              color: Colors.red[700],
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(Icons.open_in_new, size: 16, color: Colors.red[700]),
+                    ],
+                  ),
+                ),
               ),
             ],
             // Contact

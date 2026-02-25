@@ -39,7 +39,7 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
   // TODO: Replace with your Gemini API key from https://aistudio.google.com/app/apikey
   // Get your API key: https://aistudio.google.com/app/apikey
   static const String? _geminiApiKey = "AIzaSyAUj6xV4nS8TQnja-3AdAo0e2Ecma3FC1g"; // Paste your API key here: 'AIza...'
-  
+
   final BudgetEstimatorService _budgetService = BudgetEstimatorService(
     apiKey: _geminiApiKey,
   );
@@ -94,7 +94,7 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    
+
     // Initialize with provided values
     if (widget.destination != null) {
       _destinationController.text = widget.destination!;
@@ -1161,6 +1161,3 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
   }
 
 }
-
-
-

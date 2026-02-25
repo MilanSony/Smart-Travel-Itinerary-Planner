@@ -342,12 +342,12 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
       body: TravelThemeBackground(
         theme: TravelTheme.planTrip,
         child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               _buildSectionHeader('Where do you want to go?'),
               TextFormField(
                 controller: _destinationController,
@@ -385,7 +385,7 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
                       return 'Invalid destination. Did you mean: ${suggestions.take(3).join(', ')}?';
                     } else {
                       return 'Invalid destination. Please enter a valid place (e.g., Kochi, Goa, Mumbai, Munnar, Alleppey)';
-                    }
+                  }
                   }
                   
                   return null;
@@ -508,7 +508,7 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
                       )
                     : const Text('Generate Itinerary', style: TextStyle(fontSize: 18)),
               ),
-              ],
+            ],
             ),
           ),
         ),
@@ -527,16 +527,16 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
           fontWeight: FontWeight.w600,
         ),
       ),
-    );
+  );
   }
 
   InputDecoration _buildInputDecoration(String hintText, IconData icon) {
     final theme = Theme.of(context);
     return InputDecoration(
-      hintText: hintText,
+    hintText: hintText,
       prefixIcon: Icon(icon, color: theme.colorScheme.primary),
-      filled: true,
-      fillColor: Colors.white,
+    filled: true,
+    fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
@@ -550,7 +550,7 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
       ),
-    );
+  );
   }
 
   Widget _buildTravelerCounter() {
@@ -561,9 +561,9 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
           IconButton(
             icon: Icon(Icons.remove, color: theme.colorScheme.primary),
             onPressed: () {
@@ -581,8 +581,8 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
             icon: Icon(Icons.add, color: theme.colorScheme.primary),
             onPressed: () => setState(() => _travelers++),
           ),
-        ],
-      ),
-    );
+      ],
+    ),
+  );
   }
 }

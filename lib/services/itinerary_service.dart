@@ -129,102 +129,164 @@ class ItineraryService {
     }
     // Wrap the main generation logic so we can apply a 15s ceiling with a fallback
     Future<Itinerary?> _generateCore() async {
-    try {
-      print('Starting itinerary generation for: $destination');
-      
-      // Step 1: Geocode the destination
-      final geocodeData = await _geocodeDestination(destination);
-      if (geocodeData == null) {
-        print('No geocoding data found, trying fallback...');
-          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-      }
-
-      final displayName = geocodeData['display_name'];
-      final List<dynamic> bbox = geocodeData['boundingbox'];
-      final String bboxString = '${bbox[0]},${bbox[2]},${bbox[1]},${bbox[3]}';
-
-      print('Geocoding successful: $displayName');
-      print('Bounding box: $bboxString');
-
-      // Step 2: Fetch comprehensive place data
-      List<PlaceDetails> places = [];
       try {
-        places = await _fetchPlaces(bboxString, interests);
-      } catch (e) {
-        print('Error fetching places: $e');
-        print('Switching to fallback itinerary with curated data...');
-        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-      }
-      
-      if (places.isEmpty) {
-        print('No places found from OSM, using curated fallback...');
-        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-      }
+        print('Starting itinerary generation for: $destination');
+        
+        // Step 1: Geocode the destination (with proper timeout for Nominatim)
+        Map<String, dynamic>? geocodeData;
+        try {
+          geocodeData = await _geocodeDestination(destination).timeout(
+            const Duration(seconds: 20), // Increased timeout to allow Nominatim to respond
+            onTimeout: () {
+              print('Geocoding timed out after 20s - trying fallback coordinates');
+              return null;
+            },
+          );
+        } catch (e) {
+          print('Geocoding error: $e - trying fallback coordinates');
+          geocodeData = null;
+        }
 
-      // Step 3: Categorize and filter places
-      final categorizedPlaces = _categorizePlaces(places);
-      
-      // Step 4: Generate smart itinerary
-      final dayPlans = _generateSmartItinerary(
-        categorizedPlaces, 
-        durationInDays, 
-        interests,
-        travelers,
-        budgetAmount,
-        transportation,
-        destination,
-        budgetLevel,
-      );
+        // If geocoding failed, try fallback coordinates before giving up
+        if (geocodeData == null) {
+          print('No geocoding data from Nominatim, trying fallback coordinates...');
+          final fallbackCoords = _getFallbackCoordinates(destination);
+          if (fallbackCoords != null) {
+            geocodeData = {
+              'lat': fallbackCoords['lat'],
+              'lon': fallbackCoords['lon'],
+              'display_name': destination,
+              'boundingbox': [
+                fallbackCoords['lat']! - 0.1,
+                fallbackCoords['lat']! + 0.1,
+                fallbackCoords['lon']! - 0.1,
+                fallbackCoords['lon']! + 0.1,
+              ],
+            };
+            print('Using fallback coordinates for: $destination');
+          } else {
+            print('No geocoding data and no fallback coordinates - using curated fallback itinerary');
+            return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+          }
+        }
 
-      if (dayPlans.isEmpty) {
-        print('No day plans generated, trying fallback...');
+        final displayName = geocodeData['display_name'];
+        final List<dynamic> bbox = geocodeData['boundingbox'];
+        final String bboxString = '${bbox[0]},${bbox[2]},${bbox[1]},${bbox[3]}';
+
+        print('Geocoding successful: $displayName');
+        print('Bounding box: $bboxString');
+
+        // Step 2: Fetch comprehensive place data from OSM (with proper timeout)
+        List<PlaceDetails> places = [];
+        try {
+          print('Attempting to fetch places from OSM for: $destination');
+          print('Bounding box: $bboxString');
+          places = await _fetchPlaces(bboxString, interests, destination).timeout(
+            const Duration(seconds: 55), // Increased timeout to allow all OSM queries to complete
+            onTimeout: () {
+              print('Place fetching timed out after 55s - OSM API may be slow or overloaded');
+              print('This could be due to:');
+              print('  - Network connectivity issues');
+              print('  - Overpass API servers being overloaded');
+              print('  - Query taking too long to process');
+              return <PlaceDetails>[];
+            },
+          );
+          print('OSM API returned ${places.length} places');
+          if (places.isNotEmpty) {
+            print('SUCCESS: Got ${places.length} real places from OpenStreetMap!');
+            // Print sample of places found
+            final samplePlaces = places.take(5).map((p) => p.name).join(', ');
+            print('Sample places: $samplePlaces');
+          }
+        } catch (e) {
+          print('Place fetching error from OSM: $e');
+          print('Error type: ${e.runtimeType}');
+          places = []; // Continue to check if we got any places
+        }
+
+        // Only use curated fallback if OSM truly returned no places after all retries
+        if (places.isEmpty) {
+          print('WARNING: No places returned from OSM API after all attempts');
+          print('This might indicate:');
+          print('  1. Network connectivity issues');
+          print('  2. Overpass API servers are down');
+          print('  3. Bounding box might be incorrect');
+          print('  4. Query might be too restrictive');
+          print('Falling back to curated itinerary with famous spots...');
           return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-      }
+        }
 
-      // Step 5: Calculate total cost
-      double? totalCost;
-      if (budgetAmount != null) {
-        // Adjust day costs to match user's budget exactly
-        _adjustDayCostsToMatchBudget(dayPlans, budgetAmount);
-        totalCost = budgetAmount;
-      } else {
-        totalCost = _calculateBudgetAwareTotalCost(dayPlans, travelers, budgetLevel);
-      }
+        // Use OSM data - we have real places from OpenStreetMap!
+        print('SUCCESS: Using ${places.length} real places from OSM API for itinerary generation');
+        print('These are actual tourist spots from OpenStreetMap database');
 
-      print('Itinerary generated successfully with ${dayPlans.length} days');
+        // Step 3: Categorize and filter places
+        final categorizedPlaces = _categorizePlaces(places);
+        
+        // Step 4: Generate smart itinerary
+        final dayPlans = _generateSmartItinerary(
+          categorizedPlaces, 
+          durationInDays, 
+          interests,
+          travelers,
+          budgetAmount,
+          transportation,
+          destination,
+          budgetLevel,
+        );
 
-      return Itinerary(
-        destination: displayName,
-        title: 'Your Adventure in $destination',
-        dayPlans: dayPlans,
-        summary: _generateSummary(destination, durationInDays, interests),
-        totalEstimatedCost: totalCost,
+        if (dayPlans.isEmpty) {
+          print('No day plans generated, trying fallback...');
+          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+        }
+
+        // Step 5: Calculate total cost
+        double? totalCost;
+        if (budgetAmount != null) {
+          // Adjust day costs to match user's budget exactly
+          _adjustDayCostsToMatchBudget(dayPlans, budgetAmount);
+          totalCost = budgetAmount;
+        } else {
+          totalCost = _calculateBudgetAwareTotalCost(dayPlans, travelers, budgetLevel);
+        }
+
+        print('Itinerary generated successfully with ${dayPlans.length} days');
+
+        return Itinerary(
+          destination: displayName,
+          title: 'Your Adventure in $destination',
+          dayPlans: dayPlans,
+          summary: _generateSummary(destination, durationInDays, interests),
+          totalEstimatedCost: totalCost,
           startDate: startDate,
           endDate: endDate,
-      );
+        );
 
-    } catch (e) {
-      print("Error generating itinerary with OSM: $e");
-      print("Error type: ${e.runtimeType}");
-      
+      } catch (e) {
+        print("Error generating itinerary with OSM: $e");
+        print("Error type: ${e.runtimeType}");
+        
       // Always try fallback for any error - never throw exception, always return something
       print('Error detected, trying fallback itinerary...');
-      try {
+          try {
         return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-      } catch (fallbackError) {
-        print('Fallback also failed: $fallbackError');
+          } catch (fallbackError) {
+            print('Fallback also failed: $fallbackError');
         // Even if fallback fails, return a basic itinerary instead of throwing
         return _generateBasicFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-      }
+        }
       }
     }
 
-    // Enforce a 20-second ceiling; on timeout, immediately return fallback
+    // Enforce a 60-second ceiling to allow OSM API calls to complete
+    // OSM queries can take up to 50s, so we need enough time for them to finish
     try {
       return await _generateCore().timeout(
-        const Duration(seconds: 20),
+        const Duration(seconds: 60), // Increased to allow OSM API calls to complete
         onTimeout: () {
-          print('Itinerary generation timed out after 20s - using curated fallback');
+          print('Itinerary generation timed out after 60s - OSM API may be slow, using curated fallback');
           return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
         },
       ) ?? _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
@@ -292,49 +354,50 @@ class ItineraryService {
       };
     }
 
-    // Retry logic: try up to 3 times with increasing timeout
+    // Retry logic: try up to 3 times with proper timeouts for Nominatim
     int maxRetries = 3;
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      final geocodeUrl = Uri.parse(
-        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(destination)}&format=json&limit=1&addressdetails=1&accept-language=en'
-      );
-      
-        print('Geocoding request for: $destination (Attempt $attempt/$maxRetries)');
-      print('URL: $geocodeUrl');
+      try {
+        final geocodeUrl = Uri.parse(
+          'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(destination)}&format=json&limit=1&addressdetails=1&accept-language=en'
+        );
         
-        // Increase timeout with each retry: 15s, 20s, 25s
-        final timeoutDuration = Duration(seconds: 15 + (attempt * 5));
-      
-      final response = await http.get(geocodeUrl, headers: {'User-Agent': _userAgent}).timeout(
+        print('Geocoding request for: $destination (Attempt $attempt/$maxRetries)');
+        
+        // Proper timeout for Nominatim: 10s, 12s, 15s (allows Nominatim to respond)
+        final timeoutDuration = Duration(seconds: 10 + (attempt * 2));
+        
+        final response = await http.get(geocodeUrl, headers: {'User-Agent': _userAgent}).timeout(
           timeoutDuration,
-        onTimeout: () {
-            throw Exception('Geocoding timeout after ${timeoutDuration.inSeconds}s');
-        },
-      );
+          onTimeout: () {
+            print('Geocoding timeout after ${timeoutDuration.inSeconds}s');
+            throw Exception('Geocoding timeout');
+          },
+        );
 
-      print('Geocoding response status: ${response.statusCode}');
-      
-      if (response.statusCode != 200) {
-        print('Geocoding failed with status: ${response.statusCode}');
+        print('Geocoding response status: ${response.statusCode}');
+        
+        if (response.statusCode != 200) {
+          print('Geocoding failed with status: ${response.statusCode}');
           if (attempt < maxRetries) {
-            print('Retrying...');
-            await Future.delayed(Duration(seconds: attempt)); // Wait before retry
+            print('Retrying in 2 seconds...');
+            await Future.delayed(Duration(seconds: 2)); // Wait before retry
             continue;
           }
-        throw Exception('Failed to geocode destination. Status: ${response.statusCode}');
-      }
+          print('All geocoding attempts failed');
+          return null;
+        }
 
-      final data = json.decode(response.body);
-      print('Geocoding data received: ${data.length} results');
-      
-      if (data.isEmpty) {
-        print('No geocoding results found for: $destination');
-        return null;
-      }
+        final data = json.decode(response.body);
+        print('Geocoding data received: ${data.length} results');
+        
+        if (data.isEmpty) {
+          print('No geocoding results found for: $destination');
+          return null;
+        }
 
-      return data[0];
-    } catch (e) {
+        return data[0];
+      } catch (e) {
         print('Geocoding error (Attempt $attempt): $e');
         if (attempt == maxRetries) {
           // Last attempt failed, try fallback coordinates
@@ -459,134 +522,502 @@ class ItineraryService {
     return null;
   }
 
-  Future<List<PlaceDetails>> _fetchPlaces(String bbox, List<String> interests) async {
-    // Retry logic: try up to 2 times with moderate timeouts; fall back quickly on repeated timeouts
-    const int maxRetries = 2;
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        // Enhanced Overpass query - fetch more famous attractions
-        // Use shorter timeouts to avoid long waits on slow Overpass responses
-        final queryTimeout = 18 + (attempt * 6); // 24s max
-        final overpassQuery = '''
-          [out:json][timeout:$queryTimeout];
-          (
-            // Tourism attractions (most important - expanded)
-            node["tourism"]["name"](\$bbox);
-            way["tourism"]["name"](\$bbox);
-            relation["tourism"]["name"](\$bbox);
-            
-            // Specific famous attraction types
-            node["tourism"~"^(attraction|museum|gallery|zoo|theme_park|monument|memorial|artwork|viewpoint|information|aquarium)\$"]["name"](\$bbox);
-            way["tourism"~"^(attraction|museum|gallery|zoo|theme_park|monument|memorial|artwork|viewpoint|information|aquarium)\$"]["name"](\$bbox);
-            
-            // Natural attractions (expanded)
-            node["natural"~"^(beach|waterfall|peak|hill|cliff|cave|volcano|spring|geyser|bay|cape|island)\$"]["name"](\$bbox);
-            way["natural"~"^(beach|waterfall|peak|hill|cliff|cave|volcano|spring|geyser|bay|cape|island)\$"]["name"](\$bbox);
-            
-            // Historic sites and heritage
-            node["historic"]["name"](\$bbox);
-            way["historic"]["name"](\$bbox);
-            node["historic"~"^(castle|fort|palace|ruins|monument|memorial|tomb|archaeological_site|tower)\$"]["name"](\$bbox);
-            way["historic"~"^(castle|fort|palace|ruins|monument|memorial|tomb|archaeological_site|tower)\$"]["name"](\$bbox);
-            
-            // Parks and gardens (expanded)
-            node["leisure"~"^(park|garden|nature_reserve|beach_resort|marina|water_park)\$"]["name"](\$bbox);
-            way["leisure"~"^(park|garden|nature_reserve|beach_resort|marina|water_park)\$"]["name"](\$bbox);
-            
-            // Places of worship (famous temples, churches, mosques)
-            node["amenity"="place_of_worship"]["name"](\$bbox);
-            way["amenity"="place_of_worship"]["name"](\$bbox);
-            
-            // Man-made attractions
-            node["man_made"~"^(tower|bridge|lighthouse|observatory|monument|obelisk)\$"]["name"](\$bbox);
-            way["man_made"~"^(tower|bridge|lighthouse|observatory|monument|obelisk)\$"]["name"](\$bbox);
-            
-            // Water bodies and lakes
-            node["natural"="water"]["name"](\$bbox);
-            way["natural"="water"]["name"](\$bbox);
-            
-            // Food & drink (for meal planning)
-            node["amenity"~"^(restaurant|cafe|bar|fast_food)\$"]["name"](\$bbox);
-            way["amenity"~"^(restaurant|cafe|bar|fast_food)\$"]["name"](\$bbox);
-            
-            // Entertainment and culture
-            node["amenity"~"^(cinema|theatre|arts_centre|nightclub|casino)\$"]["name"](\$bbox);
-            way["amenity"~"^(cinema|theatre|arts_centre|nightclub|casino)\$"]["name"](\$bbox);
-        );
-        out center meta;
-      ''';
+  Future<List<PlaceDetails>> _fetchPlaces(String bbox, List<String> interests, String? destination) async {
+    // More robust fetcher:
+    // - uses multiple endpoints
+    // - uses __BBOX__ placeholder to avoid interpolation issues
+    // - accepts destination to allow keyword-boost fallbacks
+    // - honors interest hints with extra clauses
+    const int maxRetries = 3;
+    final overpassEndpoints = [
+      Uri.parse('https://overpass-api.de/api/interpreter'),
+      Uri.parse('https://lz4.overpass-api.de/api/interpreter'),
+      Uri.parse('https://overpass.openstreetmap.fr/api/interpreter'),
+      Uri.parse('https://overpass.kumi.systems/api/interpreter'),
+    ];
 
-        // Replace bbox placeholder
-      final finalQuery = overpassQuery.replaceAll(r'$bbox', bbox);
-      
-        print('Fetching places for bbox: $bbox (Attempt $attempt/$maxRetries, timeout: ${queryTimeout}s)');
-      
-      final overpassUrl = Uri.parse('https://overpass-api.de/api/interpreter');
-        
-        // HTTP timeout should be slightly longer than query timeout (kept shorter to fail fast)
-        final httpTimeout = Duration(seconds: queryTimeout + 6);
-        
-      final response = await http.post(
-        overpassUrl, 
-        body: {'data': finalQuery},
-        headers: {'User-Agent': _userAgent}
-      ).timeout(
-          httpTimeout,
-        onTimeout: () {
-            throw Exception('Request timeout after ${httpTimeout.inSeconds}s');
-        },
+    // Build base Overpass query using a stable placeholder
+    /// NOTE: broadened queries (removed mandatory ["name"] constraint for many tags)
+    /// so we pick up POIs even when name tag is missing; increased query timeout.
+    final baseQuery = r'''
+      [out:json][timeout:40];
+      (
+        // Core POI groups (broad coverage) — allow any element with the tag, not only those that have a name
+        node["tourism"](__BBOX__);
+        way["tourism"](__BBOX__);
+        relation["tourism"](__BBOX__);
+
+        node["historic"](__BBOX__);
+        way["historic"](__BBOX__);
+        relation["historic"](__BBOX__);
+
+        node["leisure"](__BBOX__);
+        way["leisure"](__BBOX__);
+        relation["leisure"](__BBOX__);
+
+        // Amenities that commonly interest travelers (restaurants, cafes, entertainment)
+        node["amenity"~"^(restaurant|cafe|bar|fast_food|cinema|theatre|arts_centre|nightclub|casino)$"](__BBOX__);
+        way["amenity"~"^(restaurant|cafe|bar|fast_food|cinema|theatre|arts_centre|nightclub|casino)$"](__BBOX__);
+
+        // Natural features (beaches, water bodies, waterfalls, peaks, islands)
+        node["natural"~"^(beach|water|waterfall|peak|island)$"](__BBOX__);
+        way["natural"~"^(beach|water|waterfall|peak|island)$"](__BBOX__);
+
+        // Man-made notable features
+        node["man_made"~"^(tower|bridge|lighthouse|observatory)$"](__BBOX__);
+        way["man_made"~"^(tower|bridge|lighthouse|observatory)$"](__BBOX__);
       );
+      out center meta;
+    ''';
 
-      print('Overpass API response status: ${response.statusCode}');
-      
-      if (response.statusCode != 200) {
-        print('Overpass API failed with status: ${response.statusCode}');
-          if (attempt < maxRetries) {
-            print('Retrying...');
-            await Future.delayed(Duration(seconds: attempt * 2)); // Wait before retry
-            continue;
-          }
-        print('Response body: ${response.body}');
-        throw Exception('Failed to fetch places from Overpass API. Status: ${response.statusCode}');
+    // If user provided interests, append interest-specific clauses to boost matching POI types
+    String interestClauses = '';
+    if (interests.isNotEmpty) {
+      final lowerInterests = interests.map((i) => i.toLowerCase()).toList();
+      final clauses = <String>[];
+      if (lowerInterests.contains('food') || lowerInterests.contains('food & drink')) {
+        clauses.add(r'node["amenity"~"^(restaurant|cafe|bar|fast_food)$"](__BBOX__);');
+        clauses.add(r'way["amenity"~"^(restaurant|cafe|bar|fast_food)$"](__BBOX__);');
       }
-
-      final data = json.decode(response.body);
-      final elements = data['elements'] as List;
-      
-      print('Overpass API returned ${elements.length} elements');
-
-      // Convert to PlaceDetails and filter
-      final places = elements
-          .map((element) => PlaceDetails.fromOsmElement(element))
-          .where((place) => place.name != 'Unnamed Place' && place.name.isNotEmpty)
-          .toList();
-
-      print('Filtered to ${places.length} valid places');
-
-      // Simplified duplicate removal for better performance
-      final uniquePlaces = <String, PlaceDetails>{};
-      for (final place in places) {
-        final key = _getPlaceKey(place);
-        if (!uniquePlaces.containsKey(key)) {
-          uniquePlaces[key] = place;
-        }
+      if (lowerInterests.contains('nature') || lowerInterests.contains('adventure')) {
+        clauses.add(r'node["natural"](__BBOX__);');
+        clauses.add(r'way["natural"](__BBOX__);');
+        clauses.add(r'node["leisure"~"^(park|nature_reserve)$"](__BBOX__);');
+        clauses.add(r'way["leisure"~"^(park|nature_reserve)$"](__BBOX__);');
       }
-
-      print('Final unique places: ${uniquePlaces.length}');
-      return uniquePlaces.values.toList();
-    } catch (e) {
-        print('Error fetching places (Attempt $attempt): $e');
-        final isTimeout = e.toString().toLowerCase().contains('timeout');
-        if (attempt == maxRetries || isTimeout) {
-          // Fail fast on timeout or after final attempt to trigger fallback itinerary
-          print('Stopping place fetch and switching to fallback itinerary');
-          return [];
-        }
-        // Wait before retrying with exponential backoff
-        await Future.delayed(Duration(seconds: attempt * 2));
+      if (lowerInterests.contains('culture') || lowerInterests.contains('history')) {
+        clauses.add(r'node["historic"](__BBOX__);');
+        clauses.add(r'way["historic"](__BBOX__);');
+        clauses.add(r'node["tourism"~"^(museum|gallery|monument|viewpoint)$"](__BBOX__);');
+        clauses.add(r'way["tourism"~"^(museum|gallery|monument|viewpoint)$"](__BBOX__);');
+      }
+      if (clauses.isNotEmpty) {
+        interestClauses = '[out:json][timeout:18];(\n' + clauses.join('\n') + '\n); out center meta;';
       }
     }
-    return []; // Return empty list to trigger fallback
+
+    // Compose the final query (prefer interest-augmented query if provided)
+    String finalQuery = baseQuery;
+    if (interestClauses.isNotEmpty) {
+      // Merge base + interest-specific clauses into one combined query to avoid multiple calls
+      // Note: keep a safe timeout for combined query
+      finalQuery = '''
+        [out:json][timeout:25];
+        (
+          ${baseQuery.split('(').skip(1).join('(')}
+          ${interestClauses.split('(').skip(1).join('(')}
+          );
+          out center meta;
+        ''';
+    }
+
+    // Ensure we use the stable __BBOX__ replacement
+    finalQuery = finalQuery.replaceAll('__BBOX__', bbox);
+
+    print('Fetching places for bbox: $bbox (trying ${overpassEndpoints.length} endpoints, interests: $interests)');
+    // DEBUG: print a safe preview of the final Overpass query so developers can copy it into Overpass-Turbo
+    try {
+      final previewLen = min(1200, finalQuery.length);
+      print('Final Overpass query preview (first ${previewLen} chars):\\n${finalQuery.substring(0, previewLen)}');
+    } catch (e) {
+      print('Could not preview finalQuery: $e');
+    }
+
+    // Try each endpoint with per-endpoint timeout; prefer the first that returns 200
+    http.Response? response;
+    Exception? lastError;
+    for (int i = 0; i < overpassEndpoints.length; i++) {
+      final endpoint = overpassEndpoints[i];
+      try {
+        print('Trying Overpass endpoint ${i + 1}/${overpassEndpoints.length}: ${endpoint.host}');
+        final httpTimeout = Duration(seconds: 45); // Increased timeout for each endpoint
+        response = await http.post(
+          endpoint,
+          body: {'data': finalQuery},
+          headers: {'User-Agent': _userAgent},
+        ).timeout(
+          httpTimeout,
+          onTimeout: () {
+            print('Endpoint ${endpoint.host} timed out after ${httpTimeout.inSeconds}s');
+            throw Exception('Request timeout after ${httpTimeout.inSeconds}s');
+          },
+        );
+
+        print('Endpoint ${endpoint.host} response status: ${response.statusCode}');
+        if (response.statusCode == 200) {
+          print('SUCCESS: ${endpoint.host} returned 200 OK');
+          // success, break and use this response
+          break;
+        } else {
+          lastError = Exception('Endpoint ${endpoint.host} returned status ${response.statusCode}');
+          print('Endpoint ${endpoint.host} returned non-200 status ${response.statusCode}, trying next...');
+          // If we got a response body, log a preview
+          if (response.body.isNotEmpty) {
+            final preview = response.body.length > 200 ? response.body.substring(0, 200) : response.body;
+            print('Response preview: $preview...');
+          }
+          continue;
+        }
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
+        print('Error contacting ${endpoint.host}: $e (trying next endpoint)');
+        continue;
+      }
+    }
+
+    // If no endpoint succeeded, try a simpler, more reliable query
+    if (response == null || response.statusCode != 200) {
+      print('All Overpass endpoints failed with main query. Last error: $lastError');
+      print('Attempting simpler fallback query to fetch places...');
+      
+      // Try a simpler query that's more likely to succeed
+      // Use a raw string (r''') so that regex '$' characters are not treated as Dart interpolation
+      final simpleQuery = r'''
+[out:json][timeout:25];
+(
+  node["tourism"](__BBOX__);
+  way["tourism"](__BBOX__);
+  node["historic"](__BBOX__);
+  way["historic"](__BBOX__);
+  node["leisure"](__BBOX__);
+  way["leisure"](__BBOX__);
+  node["amenity"~"^(restaurant|cafe|museum|theatre)$"](__BBOX__);
+  way["amenity"~"^(restaurant|cafe|museum|theatre)$"](__BBOX__);
+);
+out center meta;
+'''.replaceAll('__BBOX__', bbox);
+      
+      // Try the simpler query on all endpoints
+      for (final endpoint in overpassEndpoints) {
+        try {
+          print('Trying simpler query on ${endpoint.host}...');
+          final simpleResp = await http.post(
+            endpoint,
+            body: {'data': simpleQuery},
+            headers: {'User-Agent': _userAgent},
+          ).timeout(Duration(seconds: 30));
+          
+          if (simpleResp.statusCode == 200) {
+            print('Simpler query succeeded on ${endpoint.host}');
+            final kd = json.decode(simpleResp.body) as Map<String, dynamic>?;
+            final kelems = (kd?['elements'] as List?) ?? [];
+            print('Simpler query returned ${kelems.length} elements');
+            
+            if (kelems.isNotEmpty) {
+              final kplaces = kelems.map((e) => PlaceDetails.fromOsmElement(e)).toList();
+              final uniquePlacesFallback = <String, PlaceDetails>{};
+              for (final p in kplaces) {
+                if (p.name.isNotEmpty && p.name != 'Unnamed Place') {
+                  uniquePlacesFallback[_getPlaceKey(p)] = p;
+                }
+              }
+              print('Simpler query returned ${uniquePlacesFallback.length} valid places');
+              if (uniquePlacesFallback.isNotEmpty) {
+                return uniquePlacesFallback.values.toList();
+              }
+            }
+          }
+        } catch (e) {
+          print('Simpler query failed on ${endpoint.host}: $e');
+          continue;
+        }
+      }
+      
+      // Last resort: keyword-based query if destination provided
+      if (destination != null && destination.trim().isNotEmpty) {
+        print('Attempting keyword-based fallback query...');
+        final keywords = _getCuratedKeywords(destination).take(5).toList();
+        if (keywords.isNotEmpty) {
+          final kwClauses = keywords.map((k) {
+            final esc = k.replaceAll('"', '\\"').replaceAll("'", "\\'");
+            return 'node["name"~"${esc}",i](__BBOX__); way["name"~"${esc}",i](__BBOX__);';
+          }).join('\n');
+          final kwQuery = '[out:json][timeout:20];(\n$kwClauses\n);out center meta;'.replaceAll('__BBOX__', bbox);
+          try {
+            final kwResp = await http.post(
+              Uri.parse('https://lz4.overpass-api.de/api/interpreter'),
+              body: {'data': kwQuery},
+              headers: {'User-Agent': _userAgent},
+            ).timeout(Duration(seconds: 25));
+            if (kwResp.statusCode == 200) {
+              final kd = json.decode(kwResp.body) as Map<String, dynamic>?;
+              final kelems = (kd?['elements'] as List?) ?? [];
+              final kplaces = kelems.map((e) => PlaceDetails.fromOsmElement(e)).toList();
+              final uniquePlacesFallback = <String, PlaceDetails>{};
+              for (final p in kplaces) {
+                if (p.name.isNotEmpty && p.name != 'Unnamed Place') {
+                  uniquePlacesFallback[_getPlaceKey(p)] = p;
+                }
+              }
+              print('Keyword fallback returned ${uniquePlacesFallback.length} places');
+              if (uniquePlacesFallback.isNotEmpty) {
+                return uniquePlacesFallback.values.toList();
+              }
+            }
+          } catch (e) {
+            print('Keyword fallback error: $e');
+          }
+        }
+      }
+      
+      print('All OSM query attempts failed - returning empty to trigger curated fallback');
+      return [];
+    }
+
+    // Parse successful response
+    if (response == null) {
+      print('ERROR: Response is null after endpoint loop');
+      return [];
+    }
+    
+    try {
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final elements = (data['elements'] as List?) ?? [];
+      print('Overpass returned ${elements.length} raw elements for bbox: $bbox');
+      
+      if (elements.isEmpty) {
+        print('WARNING: Overpass query succeeded but returned 0 elements');
+        print('This could mean:');
+        print('  - No places match the query in this bounding box');
+        print('  - The bounding box might be too small or incorrect');
+        print('  - The query filters might be too restrictive');
+        return [];
+      }
+
+      // DEBUG: print a preview of the response body so we can inspect what Overpass returned
+      try {
+        final respBody = response?.body ?? '';
+        final previewLen = min(2000, respBody.length);
+        final bodyPreview = respBody.isNotEmpty ? respBody.substring(0, previewLen) : '<empty>';
+        print('Overpass response body preview (first ${previewLen} chars):\\n$bodyPreview');
+      } catch (e) {
+        print('Could not preview Overpass response body: $e');
+      }
+
+      // DEBUG: sample a few raw elements (up to 5) for quick inspection
+      try {
+        final sampleElements = <String>[];
+        for (var i = 0; i < min(5, elements.length); i++) {
+          final el = elements[i];
+          if (el is Map) {
+            final id = el['id']?.toString() ?? 'n/a';
+            final type = el['type']?.toString() ?? 'n/a';
+            final tags = el['tags'] ?? {};
+            final centerLat = el['lat'] ?? (el['center']?['lat']) ?? 'n/a';
+            final centerLon = el['lon'] ?? (el['center']?['lon']) ?? 'n/a';
+            sampleElements.add('id=$id type=$type center=($centerLat,$centerLon) tags=$tags');
+          } else {
+            sampleElements.add(el.toString());
+          }
+        }
+        print('Sample raw Overpass elements (up to 5):\\n${sampleElements.join("\\n")}');
+      } catch (e) {
+        print('Could not generate sample raw elements: $e');
+      }
+
+      // Convert to PlaceDetails and filter named places
+      // Build PlaceDetails from raw Overpass elements. For elements that lack a proper
+      // name we construct a readable fallback name from available tags (amenity,
+      // tourism, historic, leisure, natural, man_made, shop). This ensures unnamed
+      // OSM elements can still appear as POIs rather than being discarded.
+      final places = elements.map((element) {
+        // Ensure element is a Map before processing
+        final el = element as Map<String, dynamic>? ?? {};
+        final parsed = PlaceDetails.fromOsmElement(el);
+
+        // If the place already has a good name, keep it
+        if (parsed.name != 'Unnamed Place' && parsed.name.isNotEmpty) {
+          return parsed;
+        }
+
+        // Try to construct a fallback name from tags
+        final tags = (el['tags'] as Map<String, dynamic>?) ?? {};
+        String fallback = '';
+
+        // Prefer semantic tags that describe the feature type or common label
+        final preferKeys = ['name', 'tourism', 'historic', 'amenity', 'leisure', 'natural', 'man_made', 'shop', 'cuisine'];
+        for (final k in preferKeys) {
+          final v = tags[k];
+          if (v != null && v.toString().trim().isNotEmpty) {
+            fallback = v.toString().trim();
+            break;
+          }
+        }
+
+        // If we didn't find a descriptive tag, try more tag combinations
+        if (fallback.isEmpty) {
+          // Try combining multiple tags for a better name
+          final tagParts = <String>[];
+          if (tags['tourism'] != null) tagParts.add(tags['tourism'].toString());
+          if (tags['amenity'] != null) tagParts.add(tags['amenity'].toString());
+          if (tags['historic'] != null) tagParts.add(tags['historic'].toString());
+          if (tags['leisure'] != null) tagParts.add(tags['leisure'].toString());
+          if (tags['natural'] != null) tagParts.add(tags['natural'].toString());
+          
+          if (tagParts.isNotEmpty) {
+            fallback = tagParts.join(' ').replaceAll('_', ' ').split(' ').map((w) {
+              if (w.isEmpty) return '';
+              return w[0].toUpperCase() + w.substring(1);
+            }).join(' ');
+          }
+        }
+        
+        // If we still don't have a name, build a generic label using type/id/coords
+        if (fallback.isEmpty) {
+          final id = el['id']?.toString() ?? '';
+          final lat = (el['lat'] ?? (el['center']?['lat']))?.toString() ?? '';
+          final lon = (el['lon'] ?? (el['center']?['lon']))?.toString() ?? '';
+          final shortId = id.isNotEmpty ? id.substring(0, id.length > 6 ? 6 : id.length) : '';
+          if (lat.isNotEmpty && lon.isNotEmpty) {
+            fallback = 'Place ${shortId.isNotEmpty ? shortId + ' ' : ''}(${lat.split('.').first}.${lat.split('.').last.substring(0, min(3, lat.split('.').last.length))},${lon.split('.').first}.${lon.split('.').last.substring(0, min(3, lon.split('.').last.length))})';
+          } else if (shortId.isNotEmpty) {
+            fallback = 'Place $shortId';
+          } else {
+            fallback = 'Local place';
+          }
+        } else {
+          // Normalize fallback text: replace underscores and excess whitespace, capitalize words
+          fallback = fallback.replaceAll('_', ' ').trim();
+          fallback = fallback.split(RegExp(r'\s+')).map((w) => w.isEmpty ? '' : (w[0].toUpperCase() + (w.length > 1 ? w.substring(1) : ''))).join(' ').trim();
+        }
+
+        // Add a small hint about the primary tag if available
+        String hint = '';
+        final hintKey = tags['amenity'] ?? tags['tourism'] ?? tags['historic'] ?? tags['leisure'] ?? tags['natural'] ?? tags['man_made'];
+        if (hintKey != null && hintKey.toString().trim().isNotEmpty) {
+          hint = ' (${hintKey.toString()})';
+        }
+
+        final finalName = '$fallback$hint';
+
+        // Return a new PlaceDetails carrying over parsed fields but with the constructed name
+        return PlaceDetails(
+          name: finalName,
+          description: parsed.description,
+          website: parsed.website,
+          phone: parsed.phone,
+          openingHours: parsed.openingHours,
+          address: parsed.address,
+          cuisine: parsed.cuisine,
+          tourismType: parsed.tourismType,
+          amenityType: parsed.amenityType,
+          rating: parsed.rating,
+          imageUrl: parsed.imageUrl,
+          lat: parsed.lat,
+          lon: parsed.lon,
+          additionalTags: parsed.additionalTags,
+        );
+      })
+      // Keep places that have either a proper name OR a meaningful fallback name
+      // Don't filter too aggressively - keep places with any descriptive name
+            .where((place) {
+              // Keep if name is not empty and not just "Unnamed Place"
+              if (place.name.isEmpty || place.name == 'Unnamed Place') {
+                return false;
+              }
+              // Also check if it's a meaningful fallback (contains descriptive words)
+              final lowerName = place.name.toLowerCase();
+              final hasDescriptiveWords = lowerName.contains('temple') ||
+                  lowerName.contains('beach') ||
+                  lowerName.contains('fort') ||
+                  lowerName.contains('park') ||
+                  lowerName.contains('museum') ||
+                  lowerName.contains('monument') ||
+                  lowerName.contains('palace') ||
+                  lowerName.contains('viewpoint') ||
+                  lowerName.contains('waterfall') ||
+                  lowerName.contains('lake') ||
+                  lowerName.contains('hill') ||
+                  lowerName.contains('restaurant') ||
+                  lowerName.contains('cafe') ||
+                  place.tourismType != null ||
+                  place.amenityType != null ||
+                  place.additionalTags.isNotEmpty;
+              return hasDescriptiveWords || place.name.length > 3;
+            })
+            .toList();
+
+      print('Parsed ${places.length} valid places from OSM (after filtering)');
+      
+      if (places.isEmpty) {
+        print('WARNING: All places were filtered out after parsing');
+        print('This might indicate:');
+        print('  - Places don\'t have proper names');
+        print('  - Filtering logic is too strict');
+        print('  - OSM data format might be unexpected');
+        return [];
+      }
+
+      // Deduplicate using stable keys
+        final uniquePlaces = <String, PlaceDetails>{};
+        for (final place in places) {
+          final key = _getPlaceKey(place);
+          if (!uniquePlaces.containsKey(key)) {
+            uniquePlaces[key] = place;
+          }
+        }
+
+      // If too few places, attempt a keyword-boost query (curated keywords for the destination)
+      // This helps find famous places that might not have standard tourism tags
+      if ((uniquePlaces.length < 10) && destination != null && destination.trim().isNotEmpty) {
+        final curated = _getCuratedKeywords(destination);
+        if (curated.isNotEmpty) {
+          final takeN = curated.take(8).toList(); // Reduced to 8 for faster queries
+          print('Running keyword-boost for ${destination} with ${takeN.length} keywords to find more places');
+          final keywordClauses = takeN.map((k) {
+            final esc = k.replaceAll('"', '\\"').replaceAll("'", "\\'");
+            // Search in name, alt_name, and name:en fields for better matches
+            return 'node["name"~"${esc}",i](__BBOX__); way["name"~"${esc}",i](__BBOX__); node["alt_name"~"${esc}",i](__BBOX__); way["alt_name"~"${esc}",i](__BBOX__);';
+          }).join('\n');
+          final keywordQuery = '[out:json][timeout:20];(\n$keywordClauses\n);out center meta;';
+          final kwQueryFinal = keywordQuery.replaceAll('__BBOX__', bbox);
+          
+          // Try keyword query on multiple endpoints for better reliability
+          for (final endpoint in overpassEndpoints) {
+            try {
+              print('Trying keyword-boost query on ${endpoint.host}...');
+              final kwResp = await http.post(
+                endpoint,
+                body: {'data': kwQueryFinal},
+                headers: {'User-Agent': _userAgent}
+              ).timeout(Duration(seconds: 25));
+              
+              if (kwResp.statusCode == 200) {
+                final kd = json.decode(kwResp.body) as Map<String, dynamic>?;
+                final kelems = (kd?['elements'] as List?) ?? [];
+                print('Keyword-boost query returned ${kelems.length} elements from ${endpoint.host}');
+                
+                final extra = kelems.map((e) => PlaceDetails.fromOsmElement(e)).where((p) {
+                  return p.name.isNotEmpty && p.name != 'Unnamed Place';
+                }).toList();
+                
+                int added = 0;
+                for (final p in extra) {
+                  final k = _getPlaceKey(p);
+                  if (!uniquePlaces.containsKey(k)) {
+                    uniquePlaces[k] = p;
+                    added++;
+                  }
+                }
+                print('Keyword-boost added $added new places for $destination (total now ${uniquePlaces.length})');
+                if (added > 0) break; // Success, no need to try other endpoints
+              } else {
+                print('Keyword-boost query on ${endpoint.host} returned status ${kwResp.statusCode}');
+              }
+            } catch (e) {
+              print('Keyword-boost query error on ${endpoint.host}: $e');
+              continue; // Try next endpoint
+            }
+          }
+        }
+      }
+
+        print('Final unique places: ${uniquePlaces.length}');
+        return uniquePlaces.values.toList();
+      } catch (e) {
+      print('Error parsing Overpass response: $e');
+          return [];
+        }
   }
 
   Map<String, List<PlaceDetails>> _categorizePlaces(List<PlaceDetails> places) {
@@ -793,7 +1224,7 @@ class ItineraryService {
         'mattupetty', 'lockhart', 'photo point', 'echo point',
       ];
     }
-    
+
     // Gavi - Eco Tourism Paradise in Kerala
     if (key.contains('gavi')) {
       return [
@@ -815,7 +1246,7 @@ class ItineraryService {
         'boating', 'lake cruise', 'forest exploration', 'nature trails',
       ];
     }
-    
+
     // Ponmudi - Golden Peak
     if (key.contains('ponmudi')) {
       return [
@@ -825,7 +1256,7 @@ class ItineraryService {
         'ponmudi adventure', 'ponmudi nature', 'ponmudi camping', 'ponmudi bird watching',
       ];
     }
-    
+
     // Kollam - Cashew Capital
     if (key.contains('kollam') || key.contains('quilon')) {
       return [
@@ -836,7 +1267,7 @@ class ItineraryService {
         'kollam boat race', 'kollam fishing', 'kollam heritage', 'kollam culture',
       ];
     }
-    
+
     // Thenmala - Honey Hills
     if (key.contains('thenmala')) {
       return [
@@ -845,7 +1276,7 @@ class ItineraryService {
         'thenmala waterfalls', 'thenmala nature', 'thenmala camping', 'thenmala safari',
       ];
     }
-    
+
     // Palaruvi Falls
     if (key.contains('palaruvi')) {
       return [
@@ -853,7 +1284,7 @@ class ItineraryService {
         'palaruvi forest', 'palaruvi adventure', 'palaruvi picnic', 'palaruvi photography',
       ];
     }
-    
+
     // Jatayu Earth Center
     if (key.contains('jatayu')) {
       return [
@@ -862,7 +1293,7 @@ class ItineraryService {
         'jatayu park', 'jatayu tourism', 'jatayu heritage', 'jatayu culture',
       ];
     }
-    
+
     // Munroe Island
     if (key.contains('munroe island') || key.contains('munro island')) {
       return [
@@ -871,7 +1302,7 @@ class ItineraryService {
         'munroe island bird watching', 'munroe island homestay', 'munroe island experience',
       ];
     }
-    
+
     // Kozhikode - City of Spices
     if (key.contains('kozhikode') || key.contains('calicut')) {
       return [
@@ -882,7 +1313,7 @@ class ItineraryService {
         'kozhikode lighthouse', 'kozhikode port', 'kozhikode spice market', 'kozhikode handicrafts',
       ];
     }
-    
+
     // Kannur - Crown of Kerala
     if (key.contains('kannur')) {
       return [
@@ -893,7 +1324,7 @@ class ItineraryService {
         'kannur boat race', 'kannur temple', 'kannur mosque', 'kannur church',
       ];
     }
-    
+
     // Thrissur - Cultural Capital
     if (key.contains('thrissur')) {
       return [
@@ -904,7 +1335,7 @@ class ItineraryService {
         'thrissur church', 'thrissur mosque', 'thrissur cuisine', 'thrissur culture',
       ];
     }
-    
+
     // Palakkad - Granary of Kerala
     if (key.contains('palakkad')) {
       return [
@@ -915,7 +1346,7 @@ class ItineraryService {
         'palakkad heritage', 'palakkad culture', 'palakkad cuisine', 'palakkad handicrafts',
       ];
     }
-    
+
     // Kottayam - Land of Letters
     if (key.contains('kottayam')) {
       return [
@@ -925,7 +1356,7 @@ class ItineraryService {
         'kottayam temple', 'kottayam museum', 'kottayam library', 'kottayam printing',
       ];
     }
-    
+
     // Kuttanad - Rice Bowl of Kerala
     if (key.contains('kuttanad')) {
       return [
@@ -934,7 +1365,7 @@ class ItineraryService {
         'kuttanad experience', 'kuttanad homestay', 'kuttanad nature', 'kuttanad heritage',
       ];
     }
-    
+
     // Pathiramanal - Bird Island
     if (key.contains('pathiramanal')) {
       return [
@@ -943,7 +1374,7 @@ class ItineraryService {
         'pathiramanal tourism', 'pathiramanal experience',
       ];
     }
-    
+
     // Ambalapuzha - Temple Town
     if (key.contains('ambalapuzha')) {
       return [
@@ -952,7 +1383,7 @@ class ItineraryService {
         'ambalapuzha backwaters', 'ambalapuzha tourism',
       ];
     }
-    
+
     // Krishnapuram Palace
     if (key.contains('krishnapuram')) {
       return [
@@ -960,7 +1391,7 @@ class ItineraryService {
         'krishnapuram architecture', 'krishnapuram history', 'krishnapuram tourism',
       ];
     }
-    
+
     // Karumadi
     if (key.contains('karumadi')) {
       return [
@@ -968,7 +1399,7 @@ class ItineraryService {
         'karumadi history', 'karumadi culture', 'karumadi tourism',
       ];
     }
-    
+
     // Champakulam
     if (key.contains('champakulam')) {
       return [
@@ -977,7 +1408,7 @@ class ItineraryService {
         'champakulam experience', 'champakulam village',
       ];
     }
-    
+
     // Ilaveezhapoonchira
     if (key.contains('ilaveezhapoonchira')) {
       return [
@@ -986,7 +1417,7 @@ class ItineraryService {
         'ilaveezhapoonchira camping', 'ilaveezhapoonchira photography',
       ];
     }
-    
+
     // Ashtamudi Lake
     if (key.contains('ashtamudi')) {
       return [
@@ -1496,7 +1927,7 @@ class ItineraryService {
         'darasuram temple', 'chidambaram temple', 'rameshwaram', 'kanyakumari',
       ];
     }
-    
+
     // Kanyakumari - Southernmost Tip of India
     if (key.contains('kanyakumari') || key.contains('cape comorin')) {
       return [
@@ -1523,7 +1954,7 @@ class ItineraryService {
         'photography', 'sightseeing', 'heritage walk', 'cultural tour',
       ];
     }
-    
+
     // Dwarka - Sacred City
     if (key.contains('dwarka')) {
       return [
@@ -1532,7 +1963,7 @@ class ItineraryService {
         'beyt dwarka island', 'gopi talav', 'dwarka archaeological museum', 'dwarka fort',
       ];
     }
-    
+
     // Bodh Gaya - Sacred Buddhist Site
     if (key.contains('bodh gaya') || key.contains('bodhgaya')) {
       return [
@@ -1542,7 +1973,7 @@ class ItineraryService {
         'indosan nipponji temple', 'royal bhutan monastery', 'dungeshwari caves',
       ];
     }
-    
+
     // Gangtok - Sikkim Capital
     if (key.contains('gangtok') || key.contains('sikkim')) {
       return [
@@ -1553,7 +1984,7 @@ class ItineraryService {
         'pemayangtse monastery', 'rabdentse ruins', 'khecheopalri lake', 'yumthang valley',
       ];
     }
-    
+
     // Shillong - Scotland of East
     if (key.contains('shillong') || key.contains('meghalaya')) {
       return [
@@ -1759,8 +2190,13 @@ class ItineraryService {
       ];
     }
     
-    // Return empty list for unknown destinations
-    return [];
+    // Return generic famous spots for unknown destinations
+    return [
+      'local attractions', 'famous landmarks', 'cultural sites', 'historical places',
+      'scenic viewpoints', 'local markets', 'temples', 'parks', 'museums',
+      'beaches', 'hills', 'waterfalls', 'forts', 'palaces', 'gardens',
+      'viewpoints', 'monuments', 'heritage sites', 'tourist spots',
+    ];
   }
 
   // Score attractions by tags and curated relevance
@@ -2447,17 +2883,17 @@ class ItineraryService {
       // Prefer places with proper names (not "Restaurant", "Cafe", etc.)
       final aHasGenericName = _isGenericName(a.name);
       final bHasGenericName = _isGenericName(b.name);
-      
+
       if (!aHasGenericName && bHasGenericName) return -1;
       if (aHasGenericName && !bHasGenericName) return 1;
-      
+
       // Prefer places with ratings
       if (a.rating != null && b.rating == null) return -1;
       if (a.rating == null && b.rating != null) return 1;
       if (a.rating != null && b.rating != null) {
         return b.rating!.compareTo(a.rating!);
       }
-      
+
       return 0;
     });
 
@@ -2468,7 +2904,7 @@ class ItineraryService {
     
     return selected;
   }
-  
+
   // Check if a name is generic (like "Restaurant", "Cafe", "Food Court")
   bool _isGenericName(String name) {
     final genericNames = [
@@ -2819,7 +3255,7 @@ class ItineraryService {
       }
       return;
     }
-    
+
     // Calculate adjustment factor to match user budget exactly
     final adjustmentFactor = userBudget / currentTotal;
     
@@ -2838,7 +3274,7 @@ class ItineraryService {
         totalEstimatedCost: adjustedCost,
       );
     }
-    
+
     // Ensure the total matches exactly (handle rounding errors)
     final difference = userBudget - adjustedTotal;
     if (difference.abs() > 0.01 && dayPlans.isNotEmpty) {
@@ -2852,35 +3288,51 @@ class ItineraryService {
         totalEstimatedCost: (lastPlan.totalEstimatedCost ?? 0) + difference,
       );
     }
-    
+
     print('Budget adjusted: User budget = ₹$userBudget, Final total = ₹${dayPlans.fold<double>(0.0, (sum, day) => sum + (day.totalEstimatedCost ?? 0))}');
   }
 
   // Enhanced fallback itinerary using curated destination-specific attractions
   Itinerary _generateFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers, {DateTime? startDate, DateTime? endDate, double? userBudget}) {
     print('Generating enhanced fallback itinerary for $destination');
-    
+
     // Get curated famous places for this destination
-    final curatedKeywords = _getCuratedKeywords(destination);
+    var curatedKeywords = _getCuratedKeywords(destination);
     final dayPlans = <DayPlan>[];
     final random = Random();
-    
+
+    // Ensure we always have places to use - add generic spots if empty
+    if (curatedKeywords.isEmpty) {
+      print('No curated keywords found for $destination, using generic famous spots');
+      curatedKeywords = [
+        'famous landmarks', 'cultural sites', 'historical places', 'scenic viewpoints',
+        'local markets', 'temples', 'parks', 'museums', 'beaches', 'hills',
+        'waterfalls', 'forts', 'palaces', 'gardens', 'viewpoints', 'monuments',
+        'heritage sites', 'tourist spots', 'local attractions', 'nature spots',
+      ];
+    }
+
     // Calculate daily budget if user provided budget
     double? dailyBudget;
     if (userBudget != null && durationInDays > 0) {
       dailyBudget = userBudget / durationInDays;
     }
-    
-    // Split curated places across days
+
+    // Split curated places across days - use more places per day for better coverage
+    // Target 4-5 attractions per day (morning, late morning, afternoon, evening)
+    final targetPlacesPerDay = 4;
     final placesPerDay = (curatedKeywords.length / durationInDays).ceil();
+    final actualPlacesPerDay = placesPerDay < targetPlacesPerDay ? placesPerDay : targetPlacesPerDay;
+
+    print('Using ${curatedKeywords.length} curated spots for $destination, ${actualPlacesPerDay} places per day');
     
     for (int day = 1; day <= durationInDays; day++) {
       final activities = <Activity>[];
-      final startIdx = (day - 1) * placesPerDay;
-      final endIdx = (startIdx + placesPerDay < curatedKeywords.length) 
-          ? startIdx + placesPerDay 
+      final startIdx = (day - 1) * actualPlacesPerDay;
+      final endIdx = (startIdx + actualPlacesPerDay < curatedKeywords.length)
+          ? startIdx + actualPlacesPerDay
           : curatedKeywords.length;
-      
+
       // Get places for this day - ensure valid indices
       List<String> dayPlaces = [];
       if (curatedKeywords.isNotEmpty && startIdx < curatedKeywords.length) {
@@ -2890,64 +3342,65 @@ class ItineraryService {
           dayPlaces = curatedKeywords.sublist(safeStart, safeEnd);
         }
       }
-      
+
       // If no curated places, use generic ones
       if (dayPlaces.isEmpty || curatedKeywords.isEmpty) {
+        print('No curated places for day $day, using generic activities');
         activities.addAll(_getGenericDayActivities(destination, day, interests));
       } else {
-        // Use curated specific places
+        print('Day $day: Using ${dayPlaces.length} curated spots: ${dayPlaces.take(3).join(", ")}...');
+        // Use curated specific places - ensure we use all available places
         int placeIdx = 0;
-        
-        // Morning activity - use curated place
+
+        // Morning activity (9:00 AM) - use curated place
         if (placeIdx < dayPlaces.length) {
-          final placeName = dayPlaces[placeIdx].split(' ').map((word) => 
-            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1)
-          ).join(' ');
+          final placeName = _formatPlaceName(dayPlaces[placeIdx]);
           activities.add(_createActivityFromPlaceName(placeName, '9:00 AM', 'morning'));
           placeIdx++;
         }
-        
-        // Late morning activity
-        if (placeIdx < dayPlaces.length && dayPlaces.length > 2) {
-          final placeName = dayPlaces[placeIdx].split(' ').map((word) => 
-            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1)
-          ).join(' ');
+
+        // Late morning activity (11:00 AM) - use curated place
+        if (placeIdx < dayPlaces.length) {
+          final placeName = _formatPlaceName(dayPlaces[placeIdx]);
           activities.add(_createActivityFromPlaceName(placeName, '11:00 AM', 'morning'));
           placeIdx++;
         }
-        
-        // Lunch - use curated restaurant name
+
+        // Lunch (12:30 PM) - use curated restaurant name
         final lunchRestaurant = _getCuratedRestaurantName(destination, day, false);
-        activities.add(Activity(
+      activities.add(Activity(
           time: '12:30 PM',
           title: lunchRestaurant ?? 'Local Cuisine Experience',
-          description: lunchRestaurant != null 
+          description: lunchRestaurant != null
               ? 'Enjoy authentic local food at $lunchRestaurant'
               : 'Enjoy authentic local food and flavors of $destination',
           icon: Icons.restaurant_outlined,
           estimatedDuration: '1-2 hours',
           cost: '₹300-800 per person',
         ));
-        
-        // Afternoon activity - use curated place
+
+        // Afternoon activity (2:30 PM) - use curated place
         if (placeIdx < dayPlaces.length) {
-          final placeName = dayPlaces[placeIdx].split(' ').map((word) => 
-            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1)
-          ).join(' ');
+          final placeName = _formatPlaceName(dayPlaces[placeIdx]);
           activities.add(_createActivityFromPlaceName(placeName, '2:30 PM', 'afternoon'));
           placeIdx++;
         }
-        
-        // Evening activity - use curated place
+
+        // Late afternoon activity (4:00 PM) - use curated place if available
         if (placeIdx < dayPlaces.length) {
-          final placeName = dayPlaces[placeIdx].split(' ').map((word) => 
-            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1)
-          ).join(' ');
+          final placeName = _formatPlaceName(dayPlaces[placeIdx]);
+          activities.add(_createActivityFromPlaceName(placeName, '4:00 PM', 'afternoon'));
+          placeIdx++;
+        }
+
+        // Evening activity (5:30 PM) - use curated place
+        if (placeIdx < dayPlaces.length) {
+          final placeName = _formatPlaceName(dayPlaces[placeIdx]);
           activities.add(_createActivityFromPlaceName(placeName, '5:30 PM', 'evening'));
           placeIdx++;
         }
-        
-        // Dinner - use curated restaurant name
+
+        // Dinner (8:00 PM) - use curated restaurant name
         final dinnerRestaurant = _getCuratedRestaurantName(destination, day, true);
         activities.add(Activity(
           time: '8:00 PM',
@@ -2960,7 +3413,7 @@ class ItineraryService {
           cost: '₹500-1500 per person',
         ));
       }
-      
+
       // Calculate day cost - use daily budget if provided, otherwise calculate from activities
       double dayCost;
       if (dailyBudget != null) {
@@ -2968,17 +3421,17 @@ class ItineraryService {
       } else {
         dayCost = _calculateFallbackDayCost(activities, travelers);
       }
-      
+
       dayPlans.add(DayPlan(
         dayTitle: 'Day $day',
-        description: dayPlaces.isNotEmpty 
+        description: dayPlaces.isNotEmpty
             ? 'Explore ${dayPlaces.take(3).join(", ")} and other attractions in $destination'
             : 'A day filled with cultural experiences and local attractions in $destination',
         activities: activities,
         totalEstimatedCost: dayCost,
       ));
     }
-    
+
     // Ensure total matches user budget exactly if provided
     double totalCost;
     if (userBudget != null) {
@@ -2987,7 +3440,7 @@ class ItineraryService {
     } else {
       totalCost = dayPlans.fold<double>(0.0, (sum, day) => sum + (day.totalEstimatedCost ?? 0.0));
     }
-    
+
     return Itinerary(
       destination: destination,
       title: 'Your Adventure in $destination',
@@ -2998,7 +3451,14 @@ class ItineraryService {
       endDate: endDate,
     );
   }
-  
+
+  // Helper to format place name with proper capitalization
+  String _formatPlaceName(String placeName) {
+    return placeName.split(' ').map((word) =>
+      word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1).toLowerCase()
+    ).join(' ');
+  }
+
   // Helper to create activity from place name
   Activity _createActivityFromPlaceName(String placeName, String time, String timeOfDay) {
     final nameLower = placeName.toLowerCase();
@@ -3006,7 +3466,7 @@ class ItineraryService {
     String description = 'Visit $placeName, one of the famous attractions in the area';
     String duration = '2-3 hours';
     String cost = '₹50-200 per person';
-    
+
     // Determine icon and description based on place type
     if (nameLower.contains('beach')) {
       icon = Icons.beach_access;
@@ -3054,7 +3514,7 @@ class ItineraryService {
       cost = 'Varies';
       duration = '1-2 hours';
     }
-    
+
     return Activity(
       time: time,
       title: placeName,
@@ -3064,12 +3524,12 @@ class ItineraryService {
       cost: cost,
     );
   }
-  
+
   // Generic activities when no curated data
   List<Activity> _getGenericDayActivities(String destination, int day, List<String> interests) {
     final lunchRestaurant = _getCuratedRestaurantName(destination, day, false);
     final dinnerRestaurant = _getCuratedRestaurantName(destination, day, true);
-    
+
     return [
       Activity(
         time: '9:00 AM',
@@ -3082,7 +3542,7 @@ class ItineraryService {
       Activity(
         time: '12:30 PM',
         title: lunchRestaurant ?? 'Local Cuisine Experience',
-        description: lunchRestaurant != null 
+        description: lunchRestaurant != null
             ? 'Enjoy authentic local food at $lunchRestaurant'
             : 'Enjoy authentic local food and flavors of $destination',
         icon: Icons.restaurant_outlined,
@@ -3117,17 +3577,17 @@ class ItineraryService {
       ),
     ];
   }
-  
+
   // Basic fallback when even curated fallback fails
   Itinerary _generateBasicFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers, {DateTime? startDate, DateTime? endDate, double? userBudget}) {
     final dayPlans = <DayPlan>[];
-    
+
     // Calculate daily budget if user provided budget
     double? dailyBudget;
     if (userBudget != null && durationInDays > 0) {
       dailyBudget = userBudget / durationInDays;
     }
-    
+
     for (int day = 1; day <= durationInDays; day++) {
       final activities = _getGenericDayActivities(destination, day, interests);
       final dayCost = dailyBudget ?? 2000.0 * travelers;
@@ -3138,7 +3598,7 @@ class ItineraryService {
         totalEstimatedCost: dayCost,
       ));
     }
-    
+
     // Ensure total matches user budget exactly if provided
     double totalCost;
     if (userBudget != null) {
@@ -3158,7 +3618,7 @@ class ItineraryService {
       endDate: endDate,
     );
   }
-  
+
   // Calculate cost for fallback activities
   double _calculateFallbackDayCost(List<Activity> activities, int travelers) {
     double total = 0;
@@ -3177,14 +3637,14 @@ class ItineraryService {
     }
     return total > 0 ? total : 2000.0 * travelers; // Default if calculation fails
   }
-  
+
   // Get curated restaurant names for destinations
   String? _getCuratedRestaurantName(String? destination, int day, bool isDinner) {
     if (destination == null) return null;
-    
+
     final key = destination.toLowerCase();
     final restaurants = <String>[];
-    
+
     // Kerala destinations
     if (key.contains('kochi') || key.contains('cochin')) {
       restaurants.addAll([
@@ -3378,9 +3838,9 @@ class ItineraryService {
         'Local Cuisine Restaurant', 'Regional Restaurant'
       ]);
     }
-    
+
     if (restaurants.isEmpty) return null;
-    
+
     // Select restaurant based on day (to vary across days)
     final index = (day - 1) % restaurants.length;
     return restaurants[index];

@@ -1,16 +1,40 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <!-- ... other meta tags ... -->
+  <head>
+    <!--
+      If you are serving your web app in a path other than the root, change the
+      href value below to reflect the base path you are serving from.
+    -->
+    <base href="/" />
 
-  <title>trip_genie</title>
-  <link rel="manifest" href="manifest.json">
+    <meta charset="UTF-8" />
+    <meta content="IE=Edge" http-equiv="X-UA-Compatible" />
+    <meta
+      name="description"
+      content="Trip Genie - a smart travel itinerary planner."
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- PASTE YOUR COPIED ID HERE -->
-  <meta name="google-signin-client_id" content="831524396593-8ahnt88uf9bhh9bp69enqku4fmi499rm.apps.googleusercontent.com">
+    <title>trip_genie</title>
+    <link rel="manifest" href="manifest.json" />
 
-</head>
-<body>
-<script src="flutter.js" defer></script>
-</body>
+    <!-- Google Sign-In client id -->
+    <meta
+      name="google-signin-client_id"
+      content="831524396593-8ahnt88uf9bhh9bp69enqku4fmi499rm.apps.googleusercontent.com"
+    />
+
+    <!-- This loads the Flutter web app -->
+    <script src="flutter.js" defer></script>
+  </head>
+  <body>
+    <!-- Optional: register service worker for PWA caching in release builds -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("flutter_service_worker.js");
+        });
+      }
+    </script>
+  </body>
 </html>

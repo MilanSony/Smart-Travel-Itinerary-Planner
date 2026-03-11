@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/itinerary_model.dart';
 import '../services/weather_service.dart';
 import '../services/itinerary_service.dart';
+import '../services/packing_list_service.dart';
+import 'packing_list_screen.dart';
 
 class WeatherForecastScreen extends StatefulWidget {
   final Itinerary itinerary;
@@ -746,6 +748,30 @@ class _WeatherForecastScreenState extends State<WeatherForecastScreen> {
                         ),
                         const SizedBox(height: 16),
                         _buildPackingHintsCard(theme),
+                        const SizedBox(height: 16),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_forecasts == null ||
+                                  _forecasts!.isEmpty) return;
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => PackingListScreen(
+                                    itinerary: widget.itinerary,
+                                    forecasts: _forecasts!,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.backpack_outlined),
+                            label: const Text('View smart packing list'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF10B981),
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 24),
                         // Forecast cards
                         ..._forecasts!.asMap().entries.map((entry) => _buildForecastCard(entry.key, entry.value)).toList(),

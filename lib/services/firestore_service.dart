@@ -98,4 +98,135 @@ class FirestoreService {
       rethrow;
     }
   }
+
+  // --- PACKING LIST (SPLG) FUNCTIONS ---
+
+  /// Saves a user's final packing list as a transaction document that can be
+  /// used later by an Apriori mining job.
+  Future<void> savePackingTransaction({
+    required String userId,
+    required String tripId,
+    required String destination,
+    required DateTime? startDate,
+    required DateTime? endDate,
+    required int durationDays,
+    required String? tripType,
+    required List<String> contextTags,
+    required List<String> items,
+    int? numAdults,
+    int? numChildren,
+    List<String>? childrenAgeGroups,
+  }) async {
+    try {
+      // Upsert: keep a single document per (userId, destination)
+      final existing = await _db
+          .collection('packing_transactions')
+          .where('userId', isEqualTo: userId)
+          .where('destination', isEqualTo: destination)
+          .limit(1)
+          .get();
+
+      if (existing.docs.isEmpty) {
+        await _db.collection('packing_transactions').add({
+          'userId': userId,
+          'tripId': tripId,
+          'destination': destination,
+          'startDate': startDate,
+          'endDate': endDate,
+          'durationDays': durationDays,
+          'tripType': tripType,
+          'contextTags': contextTags,
+          'items': items,
+          'numAdults': numAdults,
+          'numChildren': numChildren,
+          'childrenAgeGroups': childrenAgeGroups,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await existing.docs.first.reference.update({
+          'tripId': tripId,
+          'startDate': startDate,
+          'endDate': endDate,
+          'durationDays': durationDays,
+          'tripType': tripType,
+          'contextTags': contextTags,
+          'items': items,
+          'numAdults': numAdults,
+          'numChildren': numChildren,
+          'childrenAgeGroups': childrenAgeGroups,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      print('Error saving packing transaction: $e');
+      rethrow;
+    }
+  }
+
+  /// Fetches mined ARM rules stored in Firestore. These rules are expected
+  /// to be generated offline using Apriori and stored in the 'packing_rules'
+  /// collection with support & confidence values.
+  Future<List<Map<String, dynamic>>> getPackingRules() async {
+    try {
+      final snapshot = await _db.collection('packing_rules').get();
+      return snapshot.docs.map((d) => d.data()).toList();
+    } catch (e) {
+      print('Error fetching packing rules: $e');
+      return [];
+    }
+  }
+
+  /// Stream of saved packing transactions for a given user and destination.
+  /// Used to show previously saved packing lists per destination.
+  Stream<QuerySnapshot> getPackingTransactionsForUserDestination(
+    String userId,
+    String destination,
+  ) {
+    return _db
+        .collection('packing_transactions')
+        .where('userId', isEqualTo: userId)
+        .where('destination', isEqualTo: destination)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
+
+  /// Update only the items array for an existing packing transaction.
+  Future<void> updatePackingTransactionItems(
+    String docId,
+    List<String> items,
+  ) async {
+    try {
+      await _db.collection('packing_transactions').doc(docId).update({
+        'items': items,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error updating packing transaction items: $e');
+      rethrow;
+    }
+  }
+
+  /// Returns the (single) evolving packing transaction for a given
+  /// (userId, destination), if it exists.
+  ///
+  /// Note: We intentionally do not orderBy to avoid requiring a composite index.
+  Future<DocumentSnapshot<Map<String, dynamic>>?> getPackingTransactionForUserDestination(
+    String userId,
+    String destination,
+  ) async {
+    try {
+      final snapshot = await _db
+          .collection('packing_transactions')
+          .where('userId', isEqualTo: userId)
+          .where('destination', isEqualTo: destination)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return null;
+      return snapshot.docs.first;
+    } catch (e) {
+      print('Error fetching packing transaction: $e');
+      return null;
+    }
+  }
 }

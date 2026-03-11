@@ -1,0 +1,51 @@
+  Future<void> _saveTransaction() async {
+    // This method demonstrates how a packing transaction would be saved
+    // for Apriori mining. In a real app you would pass the current userId
+    // and tripId from the surrounding screens.
+    try {
+      final firestore = FirestoreService();
+
+      final start = widget.itinerary.startDate;
+      DateTime? end = widget.itinerary.endDate;
+      int durationDays =
+          widget.itinerary.dayPlans.isNotEmpty ? widget.itinerary.dayPlans.length : 3;
+      if (start != null) {
+        end ??= start.add(Duration(days: durationDays - 1));
+        durationDays = end.difference(start).inDays + 1;
+      }
+
+      final contextTags = PackingListService
+          .buildContextTags(widget.itinerary, widget.forecasts)
+          .toList(growable: false);
+      final itemNames = _items.map((i) => i.name).toList(growable: false);
+
+      // TODO: wire real userId and tripId from auth / trip screen.
+      await firestore.savePackingTransaction(
+        userId: 'demo-user',
+        tripId: widget.itinerary.title,
+        destination: widget.itinerary.destination,
+        startDate: start,
+        endDate: end,
+        durationDays: durationDays,
+        tripType: null,
+        contextTags: contextTags,
+        items: itemNames,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Packing list saved for ML improvements.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save packing list right now.'),
+          ),
+        );
+      }
+    }
+  }

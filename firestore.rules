@@ -124,6 +124,32 @@ service cloud.firestore {
          isAdmin());
     }
 
+    // --- PACKING LIST (SPLG) ---
+    // Stores user's final packing list as an Apriori transaction log
+    match /packing_transactions/{txId} {
+      // Users can create their own transactions
+      allow create: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Allow users to read only their own transactions
+      allow read: if request.auth != null &&
+        resource.data.userId == request.auth.uid;
+
+      // Allow users to update their own document (e.g., modify items list)
+      allow update: if request.auth != null &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId;
+
+      // No deletes from client
+      allow delete: if false;
+    }
+
+    // Mined Apriori rules (read-only for app; write only by admin/backend)
+    match /packing_rules/{ruleId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if isAdmin();
+    }
+
     // Admin access for managing all data
     match /{document=**} {
       allow read, write: if isAdmin();

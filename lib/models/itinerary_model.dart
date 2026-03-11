@@ -511,6 +511,15 @@ class Itinerary {
   final double? totalEstimatedCost;
   final DateTime? startDate;
   final DateTime? endDate;
+  /// Optional number of adult travelers for this trip.
+  final int? numAdults;
+
+  /// Optional number of child travelers for this trip.
+  final int? numChildren;
+
+  /// Optional coarse age groups for children, e.g. ['infant_0_2', 'toddler_3_6'].
+  /// This allows the packing module to adapt items for babies vs school-age kids.
+  final List<String>? childrenAgeGroups;
 
   Itinerary({
     required this.destination,
@@ -520,6 +529,9 @@ class Itinerary {
     this.totalEstimatedCost,
     this.startDate,
     this.endDate,
+    this.numAdults,
+    this.numChildren,
+    this.childrenAgeGroups,
   });
 }
 
@@ -656,6 +668,9 @@ Map<String, dynamic> itineraryToMap(Itinerary it) {
         it.startDate != null ? Timestamp.fromDate(it.startDate!) : null,
     'endDate': it.endDate != null ? Timestamp.fromDate(it.endDate!) : null,
     'dayPlans': it.dayPlans.map((d) => dayPlanToMap(d)).toList(),
+    'numAdults': it.numAdults,
+    'numChildren': it.numChildren,
+    'childrenAgeGroups': it.childrenAgeGroups,
   };
 }
 
@@ -673,5 +688,14 @@ Itinerary itineraryFromMap(Map<String, dynamic> m) {
         : double.tryParse(m['totalEstimatedCost']?.toString() ?? ''),
     startDate: _parseDate(m['startDate']),
     endDate: _parseDate(m['endDate']),
+    numAdults: (m['numAdults'] is num)
+        ? (m['numAdults'] as num).toInt()
+        : int.tryParse(m['numAdults']?.toString() ?? ''),
+    numChildren: (m['numChildren'] is num)
+        ? (m['numChildren'] as num).toInt()
+        : int.tryParse(m['numChildren']?.toString() ?? ''),
+    childrenAgeGroups: (m['childrenAgeGroups'] as List<dynamic>?)
+        ?.map((e) => e.toString())
+        .toList(),
   );
 }

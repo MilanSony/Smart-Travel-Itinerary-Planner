@@ -127,7 +127,7 @@ class ItineraryService {
         budgetLevel = _categorizeBudgetLevel(budgetAmount, durationInDays, travelers);
       }
     }
-    // Wrap the main generation logic so we can apply a 15s ceiling with a fallback
+    // Wrap the main generation logic so we can apply a global ceiling with a fallback
     Future<Itinerary?> _generateCore() async {
       try {
         print('Starting itinerary generation for: $destination');
@@ -136,9 +136,9 @@ class ItineraryService {
         Map<String, dynamic>? geocodeData;
         try {
           geocodeData = await _geocodeDestination(destination).timeout(
-            const Duration(seconds: 20), // Increased timeout to allow Nominatim to respond
+            const Duration(seconds: 8), // Fast geocoding; fall back quickly if slow
             onTimeout: () {
-              print('Geocoding timed out after 20s - trying fallback coordinates');
+              print('Geocoding timed out after 8s - trying fallback coordinates');
               return null;
             },
           );
@@ -182,10 +182,11 @@ class ItineraryService {
         try {
           print('Attempting to fetch places from OSM for: $destination');
           print('Bounding box: $bboxString');
+          // Allow sufficient time for OSM to respond (with multiple endpoint attempts)
           places = await _fetchPlaces(bboxString, interests, destination).timeout(
-            const Duration(seconds: 55), // Increased timeout to allow all OSM queries to complete
+            const Duration(seconds: 50),
             onTimeout: () {
-              print('Place fetching timed out after 55s - OSM API may be slow or overloaded');
+              print('Place fetching timed out after 50s - OSM API may be slow or overloaded');
               print('This could be due to:');
               print('  - Network connectivity issues');
               print('  - Overpass API servers being overloaded');
@@ -280,16 +281,32 @@ class ItineraryService {
       }
     }
 
-    // Enforce a 60-second ceiling to allow OSM API calls to complete
-    // OSM queries can take up to 50s, so we need enough time for them to finish
+    // Enforce a global ceiling so users never wait too long.
+    // If OSM is slow or unreachable, we fall back to curated data quickly.
     try {
       return await _generateCore().timeout(
-        const Duration(seconds: 60), // Increased to allow OSM API calls to complete
+        const Duration(seconds: 55),
         onTimeout: () {
-          print('Itinerary generation timed out after 60s - OSM API may be slow, using curated fallback');
-          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+          print('Itinerary generation timed out after 55s - OSM API may be slow, using curated fallback');
+          return _generateFallbackItinerary(
+            destination,
+            durationInDays,
+            interests,
+            travelers,
+            startDate: startDate,
+            endDate: endDate,
+            userBudget: budgetAmount,
+          );
         },
-      ) ?? _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+      ) ?? _generateFallbackItinerary(
+        destination,
+        durationInDays,
+        interests,
+        travelers,
+        startDate: startDate,
+        endDate: endDate,
+        userBudget: budgetAmount,
+      );
     } catch (e) {
       print('Unexpected error in itinerary generation: $e');
       // Always return something, never null
@@ -528,12 +545,15 @@ class ItineraryService {
     // - uses __BBOX__ placeholder to avoid interpolation issues
     // - accepts destination to allow keyword-boost fallbacks
     // - honors interest hints with extra clauses
+    // - checks for Overpass error responses in body
+    // - uses reasonable timeouts to allow Overpass to respond
     const int maxRetries = 3;
     final overpassEndpoints = [
       Uri.parse('https://overpass-api.de/api/interpreter'),
       Uri.parse('https://lz4.overpass-api.de/api/interpreter'),
       Uri.parse('https://overpass.openstreetmap.fr/api/interpreter'),
       Uri.parse('https://overpass.kumi.systems/api/interpreter'),
+      Uri.parse('https://z.overpass-api.de/api/interpreter'),
     ];
 
     // Build base Overpass query using a stable placeholder
@@ -623,14 +643,27 @@ class ItineraryService {
       print('Could not preview finalQuery: $e');
     }
 
-    // Try each endpoint with per-endpoint timeout; prefer the first that returns 200
+    // Helper function to check if Overpass response contains an error
+    bool _isOverpassErrorResponse(String body) {
+      if (body.isEmpty) return true;
+      final lower = body.toLowerCase();
+      return lower.contains('error') && 
+             (lower.contains('rate limit') || 
+              lower.contains('timeout') || 
+              lower.contains('runtime error') ||
+              lower.contains('bad request') ||
+              lower.contains('query timed out'));
+    }
+
+    // Try each endpoint with reasonable timeout; prefer the first that returns valid data.
+    // Increased timeout to 20s to allow Overpass servers to process complex queries.
     http.Response? response;
     Exception? lastError;
     for (int i = 0; i < overpassEndpoints.length; i++) {
       final endpoint = overpassEndpoints[i];
       try {
         print('Trying Overpass endpoint ${i + 1}/${overpassEndpoints.length}: ${endpoint.host}');
-        final httpTimeout = Duration(seconds: 45); // Increased timeout for each endpoint
+        final httpTimeout = const Duration(seconds: 20); // Increased to allow Overpass to respond
         response = await http.post(
           endpoint,
           body: {'data': finalQuery},
@@ -644,20 +677,47 @@ class ItineraryService {
         );
 
         print('Endpoint ${endpoint.host} response status: ${response.statusCode}');
-        if (response.statusCode == 200) {
-          print('SUCCESS: ${endpoint.host} returned 200 OK');
-          // success, break and use this response
-          break;
-        } else {
+        
+        // Check for HTTP errors
+        if (response.statusCode != 200) {
           lastError = Exception('Endpoint ${endpoint.host} returned status ${response.statusCode}');
           print('Endpoint ${endpoint.host} returned non-200 status ${response.statusCode}, trying next...');
-          // If we got a response body, log a preview
           if (response.body.isNotEmpty) {
             final preview = response.body.length > 200 ? response.body.substring(0, 200) : response.body;
             print('Response preview: $preview...');
           }
           continue;
         }
+        
+        // Check for Overpass error messages in response body (even if status is 200)
+        if (_isOverpassErrorResponse(response.body)) {
+          lastError = Exception('Overpass returned error in response body');
+          print('Endpoint ${endpoint.host} returned error in body (rate limit/timeout), trying next...');
+          final preview = response.body.length > 300 ? response.body.substring(0, 300) : response.body;
+          print('Error response preview: $preview...');
+          continue;
+        }
+        
+        // Try to parse JSON to verify it's valid
+        try {
+          final testData = json.decode(response.body) as Map<String, dynamic>?;
+          if (testData == null) {
+            print('Endpoint ${endpoint.host} returned null JSON, trying next...');
+            continue;
+          }
+          // Check if we have elements or at least a valid structure
+          if (!testData.containsKey('elements') && !testData.containsKey('remark')) {
+            print('Endpoint ${endpoint.host} returned invalid JSON structure, trying next...');
+            continue;
+          }
+        } catch (e) {
+          print('Endpoint ${endpoint.host} returned invalid JSON: $e, trying next...');
+          continue;
+        }
+        
+        print('SUCCESS: ${endpoint.host} returned 200 OK with valid data');
+        // success, break and use this response
+        break;
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
         print('Error contacting ${endpoint.host}: $e (trying next endpoint)');
@@ -687,7 +747,7 @@ class ItineraryService {
 out center meta;
 '''.replaceAll('__BBOX__', bbox);
       
-      // Try the simpler query on all endpoints
+      // Try the simpler query on all endpoints with reasonable timeouts
       for (final endpoint in overpassEndpoints) {
         try {
           print('Trying simpler query on ${endpoint.host}...');
@@ -695,27 +755,34 @@ out center meta;
             endpoint,
             body: {'data': simpleQuery},
             headers: {'User-Agent': _userAgent},
-          ).timeout(Duration(seconds: 30));
+          ).timeout(const Duration(seconds: 18));
           
-          if (simpleResp.statusCode == 200) {
+          if (simpleResp.statusCode == 200 && !_isOverpassErrorResponse(simpleResp.body)) {
             print('Simpler query succeeded on ${endpoint.host}');
-            final kd = json.decode(simpleResp.body) as Map<String, dynamic>?;
-            final kelems = (kd?['elements'] as List?) ?? [];
-            print('Simpler query returned ${kelems.length} elements');
-            
-            if (kelems.isNotEmpty) {
-              final kplaces = kelems.map((e) => PlaceDetails.fromOsmElement(e)).toList();
-              final uniquePlacesFallback = <String, PlaceDetails>{};
-              for (final p in kplaces) {
-                if (p.name.isNotEmpty && p.name != 'Unnamed Place') {
-                  uniquePlacesFallback[_getPlaceKey(p)] = p;
+            try {
+              final kd = json.decode(simpleResp.body) as Map<String, dynamic>?;
+              final kelems = (kd?['elements'] as List?) ?? [];
+              print('Simpler query returned ${kelems.length} elements');
+              
+              if (kelems.isNotEmpty) {
+                final kplaces = kelems.map((e) => PlaceDetails.fromOsmElement(e)).toList();
+                final uniquePlacesFallback = <String, PlaceDetails>{};
+                for (final p in kplaces) {
+                  if (p.name.isNotEmpty && p.name != 'Unnamed Place') {
+                    uniquePlacesFallback[_getPlaceKey(p)] = p;
+                  }
+                }
+                print('Simpler query returned ${uniquePlacesFallback.length} valid places');
+                if (uniquePlacesFallback.isNotEmpty) {
+                  return uniquePlacesFallback.values.toList();
                 }
               }
-              print('Simpler query returned ${uniquePlacesFallback.length} valid places');
-              if (uniquePlacesFallback.isNotEmpty) {
-                return uniquePlacesFallback.values.toList();
-              }
+            } catch (e) {
+              print('Error parsing simpler query response: $e');
+              continue;
             }
+          } else {
+            print('Simpler query on ${endpoint.host} returned status ${simpleResp.statusCode} or error');
           }
         } catch (e) {
           print('Simpler query failed on ${endpoint.host}: $e');
@@ -732,30 +799,42 @@ out center meta;
             final esc = k.replaceAll('"', '\\"').replaceAll("'", "\\'");
             return 'node["name"~"${esc}",i](__BBOX__); way["name"~"${esc}",i](__BBOX__);';
           }).join('\n');
-          final kwQuery = '[out:json][timeout:20];(\n$kwClauses\n);out center meta;'.replaceAll('__BBOX__', bbox);
-          try {
-            final kwResp = await http.post(
-              Uri.parse('https://lz4.overpass-api.de/api/interpreter'),
-              body: {'data': kwQuery},
-              headers: {'User-Agent': _userAgent},
-            ).timeout(Duration(seconds: 25));
-            if (kwResp.statusCode == 200) {
-              final kd = json.decode(kwResp.body) as Map<String, dynamic>?;
-              final kelems = (kd?['elements'] as List?) ?? [];
-              final kplaces = kelems.map((e) => PlaceDetails.fromOsmElement(e)).toList();
-              final uniquePlacesFallback = <String, PlaceDetails>{};
-              for (final p in kplaces) {
-                if (p.name.isNotEmpty && p.name != 'Unnamed Place') {
-                  uniquePlacesFallback[_getPlaceKey(p)] = p;
+          final kwQuery = '[out:json][timeout:15];(\n$kwClauses\n);out center meta;'.replaceAll('__BBOX__', bbox);
+          // Try keyword query on multiple endpoints
+          for (final endpoint in overpassEndpoints.take(3)) {
+            try {
+              print('Trying keyword fallback query on ${endpoint.host}...');
+              final kwResp = await http.post(
+                endpoint,
+                body: {'data': kwQuery},
+                headers: {'User-Agent': _userAgent},
+              ).timeout(const Duration(seconds: 18));
+              if (kwResp.statusCode == 200 && !_isOverpassErrorResponse(kwResp.body)) {
+                try {
+                  final kd = json.decode(kwResp.body) as Map<String, dynamic>?;
+                  final kelems = (kd?['elements'] as List?) ?? [];
+                  final kplaces = kelems.map((e) => PlaceDetails.fromOsmElement(e)).toList();
+                  final uniquePlacesFallback = <String, PlaceDetails>{};
+                  for (final p in kplaces) {
+                    if (p.name.isNotEmpty && p.name != 'Unnamed Place') {
+                      uniquePlacesFallback[_getPlaceKey(p)] = p;
+                    }
+                  }
+                  print('Keyword fallback returned ${uniquePlacesFallback.length} places from ${endpoint.host}');
+                  if (uniquePlacesFallback.isNotEmpty) {
+                    return uniquePlacesFallback.values.toList();
+                  }
+                } catch (e) {
+                  print('Error parsing keyword fallback response: $e');
+                  continue;
                 }
+              } else {
+                print('Keyword fallback on ${endpoint.host} returned status ${kwResp.statusCode} or error');
               }
-              print('Keyword fallback returned ${uniquePlacesFallback.length} places');
-              if (uniquePlacesFallback.isNotEmpty) {
-                return uniquePlacesFallback.values.toList();
-              }
+            } catch (e) {
+              print('Keyword fallback error on ${endpoint.host}: $e');
+              continue;
             }
-          } catch (e) {
-            print('Keyword fallback error: $e');
           }
         }
       }
@@ -771,7 +850,24 @@ out center meta;
     }
     
     try {
+      // Check for Overpass errors in response body even if status is 200
+      if (_isOverpassErrorResponse(response.body)) {
+        print('ERROR: Overpass returned error in response body (rate limit/timeout)');
+        print('Response preview: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}');
+        return [];
+      }
+      
       final data = json.decode(response.body) as Map<String, dynamic>;
+      
+      // Check for Overpass remark/error messages
+      if (data.containsKey('remark') && data['remark'] != null) {
+        final remark = data['remark'].toString().toLowerCase();
+        if (remark.contains('error') || remark.contains('timeout') || remark.contains('rate limit')) {
+          print('ERROR: Overpass returned error remark: ${data['remark']}');
+          return [];
+        }
+      }
+      
       final elements = (data['elements'] as List?) ?? [];
       print('Overpass returned ${elements.length} raw elements for bbox: $bbox');
       
@@ -781,6 +877,7 @@ out center meta;
         print('  - No places match the query in this bounding box');
         print('  - The bounding box might be too small or incorrect');
         print('  - The query filters might be too restrictive');
+        print('Bounding box used: $bbox');
         return [];
       }
 
@@ -980,29 +1077,34 @@ out center meta;
                 endpoint,
                 body: {'data': kwQueryFinal},
                 headers: {'User-Agent': _userAgent}
-              ).timeout(Duration(seconds: 25));
+              ).timeout(const Duration(seconds: 20));
               
-              if (kwResp.statusCode == 200) {
-                final kd = json.decode(kwResp.body) as Map<String, dynamic>?;
-                final kelems = (kd?['elements'] as List?) ?? [];
-                print('Keyword-boost query returned ${kelems.length} elements from ${endpoint.host}');
-                
-                final extra = kelems.map((e) => PlaceDetails.fromOsmElement(e)).where((p) {
-                  return p.name.isNotEmpty && p.name != 'Unnamed Place';
-                }).toList();
-                
-                int added = 0;
-                for (final p in extra) {
-                  final k = _getPlaceKey(p);
-                  if (!uniquePlaces.containsKey(k)) {
-                    uniquePlaces[k] = p;
-                    added++;
+              if (kwResp.statusCode == 200 && !_isOverpassErrorResponse(kwResp.body)) {
+                try {
+                  final kd = json.decode(kwResp.body) as Map<String, dynamic>?;
+                  final kelems = (kd?['elements'] as List?) ?? [];
+                  print('Keyword-boost query returned ${kelems.length} elements from ${endpoint.host}');
+                  
+                  final extra = kelems.map((e) => PlaceDetails.fromOsmElement(e)).where((p) {
+                    return p.name.isNotEmpty && p.name != 'Unnamed Place';
+                  }).toList();
+                  
+                  int added = 0;
+                  for (final p in extra) {
+                    final k = _getPlaceKey(p);
+                    if (!uniquePlaces.containsKey(k)) {
+                      uniquePlaces[k] = p;
+                      added++;
+                    }
                   }
+                  print('Keyword-boost added $added new places for $destination (total now ${uniquePlaces.length})');
+                  if (added > 0) break; // Success, no need to try other endpoints
+                } catch (e) {
+                  print('Error parsing keyword-boost response: $e');
+                  continue;
                 }
-                print('Keyword-boost added $added new places for $destination (total now ${uniquePlaces.length})');
-                if (added > 0) break; // Success, no need to try other endpoints
               } else {
-                print('Keyword-boost query on ${endpoint.host} returned status ${kwResp.statusCode}');
+                print('Keyword-boost query on ${endpoint.host} returned status ${kwResp.statusCode} or error');
               }
             } catch (e) {
               print('Keyword-boost query error on ${endpoint.host}: $e');

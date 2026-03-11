@@ -255,6 +255,9 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
     try {
       final duration = _endDate!.difference(_startDate!).inDays + 1;
 
+      // Let the service handle its own timeouts and fallbacks.
+      // It is designed to ALWAYS return an itinerary (real OSM data or curated fallback)
+      // and already has internal timeouts and error handling.
       final itinerary = await _itineraryService.generateItinerary(
         destination: destination,
         durationInDays: duration,
@@ -264,11 +267,6 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
         transportation: _selectedTransportation,
         startDate: _startDate,
         endDate: _endDate,
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw Exception('Request timeout - please try again');
-        },
       );
 
       if (mounted) {
@@ -312,11 +310,9 @@ class _PlanTripScreenState extends State<PlanTripScreen> {
       }
     } catch (e) {
       if (mounted) {
-        String errorMessage = 'An error occurred. Please try again.';
+        String errorMessage = 'An error occurred while generating your itinerary. Please try again.';
         
-        if (e.toString().contains('timeout')) {
-          errorMessage = 'Request timed out. Please check your internet connection and try again.';
-        } else if (e.toString().contains('SocketException')) {
+        if (e.toString().contains('SocketException')) {
           errorMessage = 'No internet connection. Please check your network and try again.';
         } else if (e.toString().contains('HandshakeException')) {
           errorMessage = 'Connection error. Please try again.';

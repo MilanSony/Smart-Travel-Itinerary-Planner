@@ -108,7 +108,7 @@ class HotelTransportService {
     for (int i = 0; i < overpassEndpoints.length; i++) {
       final endpoint = overpassEndpoints[i];
       try {
-        print('Trying transport endpoint ${i + 1}/${overpassEndpoints.length}: ${endpoint.host}');
+        print('Trying hotel endpoint ${i + 1}/${overpassEndpoints.length}: ${endpoint.host}');
         response = await http.post(
           endpoint,
           body: {'data': finalQuery},
@@ -121,14 +121,14 @@ class HotelTransportService {
         );
         // If we got a successful response, break out and use it
         if (response.statusCode == 200) {
-          print('Transport endpoint ${endpoint.host} succeeded');
+          print('Hotel endpoint ${endpoint.host} succeeded');
           break;
         }
         lastError = Exception('Endpoint ${endpoint.host} returned status ${response.statusCode}');
-        print('Transport endpoint ${endpoint.host} failed with status ${response.statusCode}');
+        print('Hotel endpoint ${endpoint.host} failed with status ${response.statusCode}');
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
-        print('Transport endpoint ${endpoint.host} error: $e');
+        print('Hotel endpoint ${endpoint.host} error: $e');
         // Try next endpoint
         continue;
       }
@@ -264,9 +264,9 @@ class HotelTransportService {
         centerLon,
         filters,
       ).timeout(
-        const Duration(seconds: 10), // Reduced for faster fallback
+        const Duration(seconds: 20), // Increased timeout for expanded query
         onTimeout: () {
-          print('Transport API timeout after 10s - using fallback');
+          print('Transport API timeout after 20s - using fallback');
           return <TransportSuggestion>[];
         },
       );
@@ -307,31 +307,59 @@ class HotelTransportService {
     final bbox = '${centerLat - radius},${centerLon - radius},${centerLat + radius},${centerLon + radius}';
 
     final overpassQuery = r'''
-      [out:json][timeout:5];
+      [out:json][timeout:10];
       (
-        // Bus, taxi, car rental
-        node["amenity"~"^(bus_station|taxi|car_rental)$"]["name"](__BBOX__);
-        way["amenity"~"^(bus_station|taxi|car_rental)$"]["name"](__BBOX__);
-        relation["amenity"~"^(bus_station|taxi|car_rental)$"]["name"](__BBOX__);
-
-        // Public transport hubs
-        node["public_transport"]["name"](__BBOX__);
-        way["public_transport"]["name"](__BBOX__);
-        relation["public_transport"]["name"](__BBOX__);
-
-        // Train / metro
-        node["railway"="station"]["name"](__BBOX__);
-        way["railway"="station"]["name"](__BBOX__);
-        relation["railway"="station"]["name"](__BBOX__);
-
-        // Airports and ferry terminals
-        node["aeroway"="aerodrome"]["name"](__BBOX__);
-        way["aeroway"="aerodrome"]["name"](__BBOX__);
-        relation["aeroway"="aerodrome"]["name"](__BBOX__);
-
-        node["amenity"="ferry_terminal"]["name"](__BBOX__);
-        way["amenity"="ferry_terminal"]["name"](__BBOX__);
-        relation["amenity"="ferry_terminal"]["name"](__BBOX__);
+        // Bus stations and stops (with and without names)
+        node["amenity"~"^(bus_station|bus_stop)$"](__BBOX__);
+        way["amenity"~"^(bus_station|bus_stop)$"](__BBOX__);
+        relation["amenity"~"^(bus_station|bus_stop)$"](__BBOX__);
+        
+        // Taxi stands (with and without names)
+        node["amenity"="taxi"](__BBOX__);
+        way["amenity"="taxi"](__BBOX__);
+        relation["amenity"="taxi"](__BBOX__);
+        
+        // Car rental (with and without names)
+        node["amenity"="car_rental"](__BBOX__);
+        way["amenity"="car_rental"](__BBOX__);
+        relation["amenity"="car_rental"](__BBOX__);
+        
+        // Public transport hubs and stops (expanded - includes bus stops, tram stops, etc.)
+        node["public_transport"](__BBOX__);
+        way["public_transport"](__BBOX__);
+        relation["public_transport"](__BBOX__);
+        
+        // Railway stations and stops (all types)
+        node["railway"~"^(station|halt|platform|subway_entrance)$"](__BBOX__);
+        way["railway"~"^(station|halt|platform|subway_entrance)$"](__BBOX__);
+        relation["railway"~"^(station|halt|platform|subway_entrance)$"](__BBOX__);
+        
+        // Metro/subway stations
+        node["station"="subway"](__BBOX__);
+        way["station"="subway"](__BBOX__);
+        relation["station"="subway"](__BBOX__);
+        
+        // Airports and aerodromes (with and without names)
+        node["aeroway"~"^(aerodrome|airport|helipad|heliport)$"](__BBOX__);
+        way["aeroway"~"^(aerodrome|airport|helipad|heliport)$"](__BBOX__);
+        relation["aeroway"~"^(aerodrome|airport|helipad|heliport)$"](__BBOX__);
+        
+        // Ferry terminals and ports
+        node["amenity"="ferry_terminal"](__BBOX__);
+        way["amenity"="ferry_terminal"](__BBOX__);
+        relation["amenity"="ferry_terminal"](__BBOX__);
+        
+        node["waterway"="ferry"](__BBOX__);
+        way["waterway"="ferry"](__BBOX__);
+        
+        // Bicycle rental stations
+        node["amenity"="bicycle_rental"](__BBOX__);
+        way["amenity"="bicycle_rental"](__BBOX__);
+        relation["amenity"="bicycle_rental"](__BBOX__);
+        
+        // Highway bus stops (common in OSM)
+        node["highway"="bus_stop"](__BBOX__);
+        way["highway"="bus_stop"](__BBOX__);
       );
       out center meta;
     '''.replaceAll('__BBOX__', bbox);
@@ -356,7 +384,7 @@ class HotelTransportService {
           body: {'data': finalQuery},
           headers: {'User-Agent': _userAgent},
         ).timeout(
-          const Duration(seconds: 4), // Further reduced for faster fallback
+          const Duration(seconds: 8), // Increased timeout for expanded transport query
           onTimeout: () {
             throw TimeoutException('Overpass API request timeout');
           },

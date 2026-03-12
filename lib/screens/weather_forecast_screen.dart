@@ -324,7 +324,28 @@ class _WeatherForecastScreenState extends State<WeatherForecastScreen> {
     final isPoor = forecast.isPoorForOutdoors;
     final isAdjusted = _adjustedDays.containsKey(forecast.date);
     final dayPlan = idx < widget.itinerary.dayPlans.length ? widget.itinerary.dayPlans[idx] : null;
-    final outdoorPlanActivities = dayPlan != null ? dayPlan.activities.where((a) => _isLikelyOutdoor(a)).map((a) => a.title).toList() : const [];
+    final outdoorPlanActivities = dayPlan != null
+        ? dayPlan.activities
+            .where((a) => _isLikelyOutdoor(a))
+            .map((a) => a.title)
+            .toList()
+        : const [];
+    // Indoor activities for this day; if none, fall back to indoor activities from the whole itinerary.
+    final indoorPlanActivities = <String>[
+      if (dayPlan != null)
+        ...dayPlan.activities
+            .where((a) => !_isLikelyOutdoor(a))
+            .map((a) => a.title),
+    ];
+    if (indoorPlanActivities.isEmpty) {
+      final allIndoor = widget.itinerary.dayPlans
+          .expand((d) => d.activities)
+          .where((a) => !_isLikelyOutdoor(a))
+          .map((a) => a.title)
+          .toSet()
+          .toList();
+      indoorPlanActivities.addAll(allIndoor.take(4));
+    }
 
     // Header
     final header = Container(
@@ -443,90 +464,181 @@ class _WeatherForecastScreenState extends State<WeatherForecastScreen> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.blue.withOpacity(0.3)),
         ),
-        child: Row(
-          children: [
-            Icon(Icons.swap_horiz, color: Colors.blue[700], size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'This day\'s itinerary has been adjusted for weather. Outdoor activities were replaced with indoor alternatives.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: Colors.blue[900],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ));
-    } else if (isPoor && outdoorPlanActivities.isNotEmpty) {
-      // If forecast is poor but not yet adjusted, show warning
-      detailsChildren.add(const SizedBox(height: 16));
-      detailsChildren.add(Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.orange.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.orange.withOpacity(0.3)),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.warning_amber_rounded,
-                    color: Colors.orange[700], size: 20),
+                Icon(Icons.swap_horiz, color: Colors.blue[700], size: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Poor weather expected. Consider indoor alternatives for outdoor activities.',
+                    'This day\'s itinerary has already been adjusted for weather. Outdoor activities were replaced with indoor options.',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.orange[900],
+                      color: Colors.blue[900],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Potentially affected activities:',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: Colors.orange[900],
+            if (indoorPlanActivities.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Indoor activities planned for this day:',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[900],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            ...outdoorPlanActivities.take(3).map((s) => Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.only(top: 6),
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: Colors.orange,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          s,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[700],
-                            height: 1.35,
+              const SizedBox(height: 8),
+              ...indoorPlanActivities.take(4).map(
+                    (s) => Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            margin: const EdgeInsets.only(top: 6),
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: Colors.blue,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              s,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[700],
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                )),
+            ],
           ],
         ),
       ));
+    } else if (isPoor && (outdoorPlanActivities.isNotEmpty || indoorPlanActivities.isNotEmpty)) {
+      // If forecast is poor but not yet adjusted, show warning with outdoor + indoor suggestions
+      detailsChildren.add(const SizedBox(height: 16));
+      detailsChildren.add(
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.orange.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.orange[700], size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Poor weather expected. Consider switching outdoor activities to indoor alternatives.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange[900],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (outdoorPlanActivities.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Potentially affected outdoor activities:',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange[900],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...outdoorPlanActivities.take(3).map(
+                      (s) => Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                s,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey[700],
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+              if (indoorPlanActivities.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Suggested indoor alternatives at this destination:',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[900],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...indoorPlanActivities.take(4).map(
+                      (s) => Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(top: 6),
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                s,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey[700],
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+            ],
+          ),
+        ),
+      );
     }
 
     // Good weather message when appropriate

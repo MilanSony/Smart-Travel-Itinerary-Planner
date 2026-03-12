@@ -129,9 +129,9 @@ class ItineraryService {
     }
     // Wrap the main generation logic so we can apply a global ceiling with a fallback
     Future<Itinerary?> _generateCore() async {
-      try {
-        print('Starting itinerary generation for: $destination');
-        
+    try {
+      print('Starting itinerary generation for: $destination');
+      
         // Step 1: Geocode the destination (with proper timeout for Nominatim)
         Map<String, dynamic>? geocodeData;
         try {
@@ -148,7 +148,7 @@ class ItineraryService {
         }
 
         // If geocoding failed, try fallback coordinates before giving up
-        if (geocodeData == null) {
+      if (geocodeData == null) {
           print('No geocoding data from Nominatim, trying fallback coordinates...');
           final fallbackCoords = _getFallbackCoordinates(destination);
           if (fallbackCoords != null) {
@@ -166,20 +166,20 @@ class ItineraryService {
             print('Using fallback coordinates for: $destination');
           } else {
             print('No geocoding data and no fallback coordinates - using curated fallback itinerary');
-            return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
           }
-        }
+      }
 
-        final displayName = geocodeData['display_name'];
-        final List<dynamic> bbox = geocodeData['boundingbox'];
-        final String bboxString = '${bbox[0]},${bbox[2]},${bbox[1]},${bbox[3]}';
+      final displayName = geocodeData['display_name'];
+      final List<dynamic> bbox = geocodeData['boundingbox'];
+      final String bboxString = '${bbox[0]},${bbox[2]},${bbox[1]},${bbox[3]}';
 
-        print('Geocoding successful: $displayName');
-        print('Bounding box: $bboxString');
+      print('Geocoding successful: $displayName');
+      print('Bounding box: $bboxString');
 
         // Step 2: Fetch comprehensive place data from OSM (with proper timeout)
-        List<PlaceDetails> places = [];
-        try {
+      List<PlaceDetails> places = [];
+      try {
           print('Attempting to fetch places from OSM for: $destination');
           print('Bounding box: $bboxString');
           // Allow sufficient time for OSM to respond (with multiple endpoint attempts)
@@ -201,14 +201,14 @@ class ItineraryService {
             final samplePlaces = places.take(5).map((p) => p.name).join(', ');
             print('Sample places: $samplePlaces');
           }
-        } catch (e) {
+      } catch (e) {
           print('Place fetching error from OSM: $e');
           print('Error type: ${e.runtimeType}');
           places = []; // Continue to check if we got any places
         }
 
         // Only use curated fallback if OSM truly returned no places after all retries
-        if (places.isEmpty) {
+      if (places.isEmpty) {
           print('WARNING: No places returned from OSM API after all attempts');
           print('This might indicate:');
           print('  1. Network connectivity issues');
@@ -216,68 +216,68 @@ class ItineraryService {
           print('  3. Bounding box might be incorrect');
           print('  4. Query might be too restrictive');
           print('Falling back to curated itinerary with famous spots...');
-          return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-        }
+        return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
+      }
 
         // Use OSM data - we have real places from OpenStreetMap!
         print('SUCCESS: Using ${places.length} real places from OSM API for itinerary generation');
         print('These are actual tourist spots from OpenStreetMap database');
 
-        // Step 3: Categorize and filter places
-        final categorizedPlaces = _categorizePlaces(places);
-        
-        // Step 4: Generate smart itinerary
-        final dayPlans = _generateSmartItinerary(
-          categorizedPlaces, 
-          durationInDays, 
-          interests,
-          travelers,
-          budgetAmount,
-          transportation,
-          destination,
-          budgetLevel,
-        );
+      // Step 3: Categorize and filter places
+      final categorizedPlaces = _categorizePlaces(places);
+      
+      // Step 4: Generate smart itinerary
+      final dayPlans = _generateSmartItinerary(
+        categorizedPlaces, 
+        durationInDays, 
+        interests,
+        travelers,
+        budgetAmount,
+        transportation,
+        destination,
+        budgetLevel,
+      );
 
-        if (dayPlans.isEmpty) {
-          print('No day plans generated, trying fallback...');
+      if (dayPlans.isEmpty) {
+        print('No day plans generated, trying fallback...');
           return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-        }
+      }
 
-        // Step 5: Calculate total cost
-        double? totalCost;
-        if (budgetAmount != null) {
-          // Adjust day costs to match user's budget exactly
-          _adjustDayCostsToMatchBudget(dayPlans, budgetAmount);
-          totalCost = budgetAmount;
-        } else {
-          totalCost = _calculateBudgetAwareTotalCost(dayPlans, travelers, budgetLevel);
-        }
+      // Step 5: Calculate total cost
+      double? totalCost;
+      if (budgetAmount != null) {
+        // Adjust day costs to match user's budget exactly
+        _adjustDayCostsToMatchBudget(dayPlans, budgetAmount);
+        totalCost = budgetAmount;
+      } else {
+        totalCost = _calculateBudgetAwareTotalCost(dayPlans, travelers, budgetLevel);
+      }
 
-        print('Itinerary generated successfully with ${dayPlans.length} days');
+      print('Itinerary generated successfully with ${dayPlans.length} days');
 
-        return Itinerary(
-          destination: displayName,
-          title: 'Your Adventure in $destination',
-          dayPlans: dayPlans,
-          summary: _generateSummary(destination, durationInDays, interests),
-          totalEstimatedCost: totalCost,
+      return Itinerary(
+        destination: displayName,
+        title: 'Your Adventure in $destination',
+        dayPlans: dayPlans,
+        summary: _generateSummary(destination, durationInDays, interests),
+        totalEstimatedCost: totalCost,
           startDate: startDate,
           endDate: endDate,
-        );
+      );
 
-      } catch (e) {
-        print("Error generating itinerary with OSM: $e");
-        print("Error type: ${e.runtimeType}");
-        
+    } catch (e) {
+      print("Error generating itinerary with OSM: $e");
+      print("Error type: ${e.runtimeType}");
+      
       // Always try fallback for any error - never throw exception, always return something
       print('Error detected, trying fallback itinerary...');
-          try {
+      try {
         return _generateFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-          } catch (fallbackError) {
-            print('Fallback also failed: $fallbackError');
+      } catch (fallbackError) {
+        print('Fallback also failed: $fallbackError');
         // Even if fallback fails, return a basic itinerary instead of throwing
         return _generateBasicFallbackItinerary(destination, durationInDays, interests, travelers, startDate: startDate, endDate: endDate, userBudget: budgetAmount);
-        }
+      }
       }
     }
 
@@ -374,28 +374,28 @@ class ItineraryService {
     // Retry logic: try up to 3 times with proper timeouts for Nominatim
     int maxRetries = 3;
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        final geocodeUrl = Uri.parse(
-          'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(destination)}&format=json&limit=1&addressdetails=1&accept-language=en'
-        );
-        
+    try {
+      final geocodeUrl = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(destination)}&format=json&limit=1&addressdetails=1&accept-language=en'
+      );
+      
         print('Geocoding request for: $destination (Attempt $attempt/$maxRetries)');
         
         // Proper timeout for Nominatim: 10s, 12s, 15s (allows Nominatim to respond)
         final timeoutDuration = Duration(seconds: 10 + (attempt * 2));
-        
-        final response = await http.get(geocodeUrl, headers: {'User-Agent': _userAgent}).timeout(
+      
+      final response = await http.get(geocodeUrl, headers: {'User-Agent': _userAgent}).timeout(
           timeoutDuration,
-          onTimeout: () {
+        onTimeout: () {
             print('Geocoding timeout after ${timeoutDuration.inSeconds}s');
             throw Exception('Geocoding timeout');
-          },
-        );
+        },
+      );
 
-        print('Geocoding response status: ${response.statusCode}');
-        
-        if (response.statusCode != 200) {
-          print('Geocoding failed with status: ${response.statusCode}');
+      print('Geocoding response status: ${response.statusCode}');
+      
+      if (response.statusCode != 200) {
+        print('Geocoding failed with status: ${response.statusCode}');
           if (attempt < maxRetries) {
             print('Retrying in 2 seconds...');
             await Future.delayed(Duration(seconds: 2)); // Wait before retry
@@ -403,18 +403,18 @@ class ItineraryService {
           }
           print('All geocoding attempts failed');
           return null;
-        }
+      }
 
-        final data = json.decode(response.body);
-        print('Geocoding data received: ${data.length} results');
-        
-        if (data.isEmpty) {
-          print('No geocoding results found for: $destination');
-          return null;
-        }
+      final data = json.decode(response.body);
+      print('Geocoding data received: ${data.length} results');
+      
+      if (data.isEmpty) {
+        print('No geocoding results found for: $destination');
+        return null;
+      }
 
-        return data[0];
-      } catch (e) {
+      return data[0];
+    } catch (e) {
         print('Geocoding error (Attempt $attempt): $e');
         if (attempt == maxRetries) {
           // Last attempt failed, try fallback coordinates
@@ -626,9 +626,9 @@ class ItineraryService {
         (
           ${baseQuery.split('(').skip(1).join('(')}
           ${interestClauses.split('(').skip(1).join('(')}
-          );
-          out center meta;
-        ''';
+        );
+        out center meta;
+      ''';
     }
 
     // Ensure we use the stable __BBOX__ replacement
@@ -666,28 +666,28 @@ class ItineraryService {
         final httpTimeout = const Duration(seconds: 20); // Increased to allow Overpass to respond
         response = await http.post(
           endpoint,
-          body: {'data': finalQuery},
+        body: {'data': finalQuery},
           headers: {'User-Agent': _userAgent},
-        ).timeout(
+      ).timeout(
           httpTimeout,
-          onTimeout: () {
+        onTimeout: () {
             print('Endpoint ${endpoint.host} timed out after ${httpTimeout.inSeconds}s');
             throw Exception('Request timeout after ${httpTimeout.inSeconds}s');
-          },
-        );
+        },
+      );
 
         print('Endpoint ${endpoint.host} response status: ${response.statusCode}');
-        
+      
         // Check for HTTP errors
-        if (response.statusCode != 200) {
+      if (response.statusCode != 200) {
           lastError = Exception('Endpoint ${endpoint.host} returned status ${response.statusCode}');
           print('Endpoint ${endpoint.host} returned non-200 status ${response.statusCode}, trying next...');
           if (response.body.isNotEmpty) {
             final preview = response.body.length > 200 ? response.body.substring(0, 200) : response.body;
             print('Response preview: $preview...');
           }
-          continue;
-        }
+            continue;
+          }
         
         // Check for Overpass error messages in response body (even if status is 200)
         if (_isOverpassErrorResponse(response.body)) {
@@ -1032,7 +1032,7 @@ out center meta;
                   place.additionalTags.isNotEmpty;
               return hasDescriptiveWords || place.name.length > 3;
             })
-            .toList();
+          .toList();
 
       print('Parsed ${places.length} valid places from OSM (after filtering)');
       
@@ -1046,11 +1046,11 @@ out center meta;
       }
 
       // Deduplicate using stable keys
-        final uniquePlaces = <String, PlaceDetails>{};
-        for (final place in places) {
-          final key = _getPlaceKey(place);
-          if (!uniquePlaces.containsKey(key)) {
-            uniquePlaces[key] = place;
+      final uniquePlaces = <String, PlaceDetails>{};
+      for (final place in places) {
+        final key = _getPlaceKey(place);
+        if (!uniquePlaces.containsKey(key)) {
+          uniquePlaces[key] = place;
           }
         }
 
@@ -1114,9 +1114,9 @@ out center meta;
         }
       }
 
-        print('Final unique places: ${uniquePlaces.length}');
-        return uniquePlaces.values.toList();
-      } catch (e) {
+      print('Final unique places: ${uniquePlaces.length}');
+      return uniquePlaces.values.toList();
+    } catch (e) {
       print('Error parsing Overpass response: $e');
           return [];
         }
@@ -1326,7 +1326,7 @@ out center meta;
         'mattupetty', 'lockhart', 'photo point', 'echo point',
       ];
     }
-
+    
     // Gavi - Eco Tourism Paradise in Kerala
     if (key.contains('gavi')) {
       return [
@@ -1348,7 +1348,7 @@ out center meta;
         'boating', 'lake cruise', 'forest exploration', 'nature trails',
       ];
     }
-
+    
     // Ponmudi - Golden Peak
     if (key.contains('ponmudi')) {
       return [
@@ -1358,7 +1358,7 @@ out center meta;
         'ponmudi adventure', 'ponmudi nature', 'ponmudi camping', 'ponmudi bird watching',
       ];
     }
-
+    
     // Kollam - Cashew Capital
     if (key.contains('kollam') || key.contains('quilon')) {
       return [
@@ -1369,7 +1369,7 @@ out center meta;
         'kollam boat race', 'kollam fishing', 'kollam heritage', 'kollam culture',
       ];
     }
-
+    
     // Thenmala - Honey Hills
     if (key.contains('thenmala')) {
       return [
@@ -1378,7 +1378,7 @@ out center meta;
         'thenmala waterfalls', 'thenmala nature', 'thenmala camping', 'thenmala safari',
       ];
     }
-
+    
     // Palaruvi Falls
     if (key.contains('palaruvi')) {
       return [
@@ -1386,7 +1386,7 @@ out center meta;
         'palaruvi forest', 'palaruvi adventure', 'palaruvi picnic', 'palaruvi photography',
       ];
     }
-
+    
     // Jatayu Earth Center
     if (key.contains('jatayu')) {
       return [
@@ -1395,7 +1395,7 @@ out center meta;
         'jatayu park', 'jatayu tourism', 'jatayu heritage', 'jatayu culture',
       ];
     }
-
+    
     // Munroe Island
     if (key.contains('munroe island') || key.contains('munro island')) {
       return [
@@ -1404,7 +1404,7 @@ out center meta;
         'munroe island bird watching', 'munroe island homestay', 'munroe island experience',
       ];
     }
-
+    
     // Kozhikode - City of Spices
     if (key.contains('kozhikode') || key.contains('calicut')) {
       return [
@@ -1415,7 +1415,7 @@ out center meta;
         'kozhikode lighthouse', 'kozhikode port', 'kozhikode spice market', 'kozhikode handicrafts',
       ];
     }
-
+    
     // Kannur - Crown of Kerala
     if (key.contains('kannur')) {
       return [
@@ -1426,7 +1426,7 @@ out center meta;
         'kannur boat race', 'kannur temple', 'kannur mosque', 'kannur church',
       ];
     }
-
+    
     // Thrissur - Cultural Capital
     if (key.contains('thrissur')) {
       return [
@@ -1437,7 +1437,7 @@ out center meta;
         'thrissur church', 'thrissur mosque', 'thrissur cuisine', 'thrissur culture',
       ];
     }
-
+    
     // Palakkad - Granary of Kerala
     if (key.contains('palakkad')) {
       return [
@@ -1448,7 +1448,7 @@ out center meta;
         'palakkad heritage', 'palakkad culture', 'palakkad cuisine', 'palakkad handicrafts',
       ];
     }
-
+    
     // Kottayam - Land of Letters
     if (key.contains('kottayam')) {
       return [
@@ -1458,7 +1458,7 @@ out center meta;
         'kottayam temple', 'kottayam museum', 'kottayam library', 'kottayam printing',
       ];
     }
-
+    
     // Kuttanad - Rice Bowl of Kerala
     if (key.contains('kuttanad')) {
       return [
@@ -1467,7 +1467,7 @@ out center meta;
         'kuttanad experience', 'kuttanad homestay', 'kuttanad nature', 'kuttanad heritage',
       ];
     }
-
+    
     // Pathiramanal - Bird Island
     if (key.contains('pathiramanal')) {
       return [
@@ -1476,7 +1476,7 @@ out center meta;
         'pathiramanal tourism', 'pathiramanal experience',
       ];
     }
-
+    
     // Ambalapuzha - Temple Town
     if (key.contains('ambalapuzha')) {
       return [
@@ -1485,7 +1485,7 @@ out center meta;
         'ambalapuzha backwaters', 'ambalapuzha tourism',
       ];
     }
-
+    
     // Krishnapuram Palace
     if (key.contains('krishnapuram')) {
       return [
@@ -1493,7 +1493,7 @@ out center meta;
         'krishnapuram architecture', 'krishnapuram history', 'krishnapuram tourism',
       ];
     }
-
+    
     // Karumadi
     if (key.contains('karumadi')) {
       return [
@@ -1501,7 +1501,7 @@ out center meta;
         'karumadi history', 'karumadi culture', 'karumadi tourism',
       ];
     }
-
+    
     // Champakulam
     if (key.contains('champakulam')) {
       return [
@@ -1510,7 +1510,7 @@ out center meta;
         'champakulam experience', 'champakulam village',
       ];
     }
-
+    
     // Ilaveezhapoonchira
     if (key.contains('ilaveezhapoonchira')) {
       return [
@@ -1519,7 +1519,7 @@ out center meta;
         'ilaveezhapoonchira camping', 'ilaveezhapoonchira photography',
       ];
     }
-
+    
     // Ashtamudi Lake
     if (key.contains('ashtamudi')) {
       return [
@@ -2029,7 +2029,7 @@ out center meta;
         'darasuram temple', 'chidambaram temple', 'rameshwaram', 'kanyakumari',
       ];
     }
-
+    
     // Kanyakumari - Southernmost Tip of India
     if (key.contains('kanyakumari') || key.contains('cape comorin')) {
       return [
@@ -2056,7 +2056,7 @@ out center meta;
         'photography', 'sightseeing', 'heritage walk', 'cultural tour',
       ];
     }
-
+    
     // Dwarka - Sacred City
     if (key.contains('dwarka')) {
       return [
@@ -2065,7 +2065,7 @@ out center meta;
         'beyt dwarka island', 'gopi talav', 'dwarka archaeological museum', 'dwarka fort',
       ];
     }
-
+    
     // Bodh Gaya - Sacred Buddhist Site
     if (key.contains('bodh gaya') || key.contains('bodhgaya')) {
       return [
@@ -2075,7 +2075,7 @@ out center meta;
         'indosan nipponji temple', 'royal bhutan monastery', 'dungeshwari caves',
       ];
     }
-
+    
     // Gangtok - Sikkim Capital
     if (key.contains('gangtok') || key.contains('sikkim')) {
       return [
@@ -2086,7 +2086,7 @@ out center meta;
         'pemayangtse monastery', 'rabdentse ruins', 'khecheopalri lake', 'yumthang valley',
       ];
     }
-
+    
     // Shillong - Scotland of East
     if (key.contains('shillong') || key.contains('meghalaya')) {
       return [
@@ -2985,17 +2985,17 @@ out center meta;
       // Prefer places with proper names (not "Restaurant", "Cafe", etc.)
       final aHasGenericName = _isGenericName(a.name);
       final bHasGenericName = _isGenericName(b.name);
-
+      
       if (!aHasGenericName && bHasGenericName) return -1;
       if (aHasGenericName && !bHasGenericName) return 1;
-
+      
       // Prefer places with ratings
       if (a.rating != null && b.rating == null) return -1;
       if (a.rating == null && b.rating != null) return 1;
       if (a.rating != null && b.rating != null) {
         return b.rating!.compareTo(a.rating!);
       }
-
+      
       return 0;
     });
 
@@ -3006,7 +3006,7 @@ out center meta;
     
     return selected;
   }
-
+  
   // Check if a name is generic (like "Restaurant", "Cafe", "Food Court")
   bool _isGenericName(String name) {
     final genericNames = [
@@ -3357,7 +3357,7 @@ out center meta;
       }
       return;
     }
-
+    
     // Calculate adjustment factor to match user budget exactly
     final adjustmentFactor = userBudget / currentTotal;
     
@@ -3376,7 +3376,7 @@ out center meta;
         totalEstimatedCost: adjustedCost,
       );
     }
-
+    
     // Ensure the total matches exactly (handle rounding errors)
     final difference = userBudget - adjustedTotal;
     if (difference.abs() > 0.01 && dayPlans.isNotEmpty) {
@@ -3390,14 +3390,14 @@ out center meta;
         totalEstimatedCost: (lastPlan.totalEstimatedCost ?? 0) + difference,
       );
     }
-
+    
     print('Budget adjusted: User budget = ₹$userBudget, Final total = ₹${dayPlans.fold<double>(0.0, (sum, day) => sum + (day.totalEstimatedCost ?? 0))}');
   }
 
   // Enhanced fallback itinerary using curated destination-specific attractions
   Itinerary _generateFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers, {DateTime? startDate, DateTime? endDate, double? userBudget}) {
     print('Generating enhanced fallback itinerary for $destination');
-
+    
     // Get curated famous places for this destination
     var curatedKeywords = _getCuratedKeywords(destination);
     final dayPlans = <DayPlan>[];
@@ -3413,13 +3413,13 @@ out center meta;
         'heritage sites', 'tourist spots', 'local attractions', 'nature spots',
       ];
     }
-
+    
     // Calculate daily budget if user provided budget
     double? dailyBudget;
     if (userBudget != null && durationInDays > 0) {
       dailyBudget = userBudget / durationInDays;
     }
-
+    
     // Split curated places across days - use more places per day for better coverage
     // Target 4-5 attractions per day (morning, late morning, afternoon, evening)
     final targetPlacesPerDay = 4;
@@ -3434,7 +3434,7 @@ out center meta;
       final endIdx = (startIdx + actualPlacesPerDay < curatedKeywords.length)
           ? startIdx + actualPlacesPerDay
           : curatedKeywords.length;
-
+      
       // Get places for this day - ensure valid indices
       List<String> dayPlaces = [];
       if (curatedKeywords.isNotEmpty && startIdx < curatedKeywords.length) {
@@ -3444,7 +3444,7 @@ out center meta;
           dayPlaces = curatedKeywords.sublist(safeStart, safeEnd);
         }
       }
-
+      
       // If no curated places, use generic ones
       if (dayPlaces.isEmpty || curatedKeywords.isEmpty) {
         print('No curated places for day $day, using generic activities');
@@ -3453,41 +3453,41 @@ out center meta;
         print('Day $day: Using ${dayPlaces.length} curated spots: ${dayPlaces.take(3).join(", ")}...');
         // Use curated specific places - ensure we use all available places
         int placeIdx = 0;
-
+        
         // Morning activity (9:00 AM) - use curated place
         if (placeIdx < dayPlaces.length) {
           final placeName = _formatPlaceName(dayPlaces[placeIdx]);
           activities.add(_createActivityFromPlaceName(placeName, '9:00 AM', 'morning'));
           placeIdx++;
         }
-
+        
         // Late morning activity (11:00 AM) - use curated place
         if (placeIdx < dayPlaces.length) {
           final placeName = _formatPlaceName(dayPlaces[placeIdx]);
           activities.add(_createActivityFromPlaceName(placeName, '11:00 AM', 'morning'));
           placeIdx++;
         }
-
+        
         // Lunch (12:30 PM) - use curated restaurant name
         final lunchRestaurant = _getCuratedRestaurantName(destination, day, false);
-      activities.add(Activity(
+        activities.add(Activity(
           time: '12:30 PM',
           title: lunchRestaurant ?? 'Local Cuisine Experience',
-          description: lunchRestaurant != null
+          description: lunchRestaurant != null 
               ? 'Enjoy authentic local food at $lunchRestaurant'
               : 'Enjoy authentic local food and flavors of $destination',
           icon: Icons.restaurant_outlined,
           estimatedDuration: '1-2 hours',
           cost: '₹300-800 per person',
         ));
-
+        
         // Afternoon activity (2:30 PM) - use curated place
         if (placeIdx < dayPlaces.length) {
           final placeName = _formatPlaceName(dayPlaces[placeIdx]);
           activities.add(_createActivityFromPlaceName(placeName, '2:30 PM', 'afternoon'));
           placeIdx++;
         }
-
+        
         // Late afternoon activity (4:00 PM) - use curated place if available
         if (placeIdx < dayPlaces.length) {
           final placeName = _formatPlaceName(dayPlaces[placeIdx]);
@@ -3501,7 +3501,7 @@ out center meta;
           activities.add(_createActivityFromPlaceName(placeName, '5:30 PM', 'evening'));
           placeIdx++;
         }
-
+        
         // Dinner (8:00 PM) - use curated restaurant name
         final dinnerRestaurant = _getCuratedRestaurantName(destination, day, true);
         activities.add(Activity(
@@ -3515,7 +3515,7 @@ out center meta;
           cost: '₹500-1500 per person',
         ));
       }
-
+      
       // Calculate day cost - use daily budget if provided, otherwise calculate from activities
       double dayCost;
       if (dailyBudget != null) {
@@ -3523,17 +3523,17 @@ out center meta;
       } else {
         dayCost = _calculateFallbackDayCost(activities, travelers);
       }
-
+      
       dayPlans.add(DayPlan(
         dayTitle: 'Day $day',
-        description: dayPlaces.isNotEmpty
+        description: dayPlaces.isNotEmpty 
             ? 'Explore ${dayPlaces.take(3).join(", ")} and other attractions in $destination'
             : 'A day filled with cultural experiences and local attractions in $destination',
         activities: activities,
         totalEstimatedCost: dayCost,
       ));
     }
-
+    
     // Ensure total matches user budget exactly if provided
     double totalCost;
     if (userBudget != null) {
@@ -3542,7 +3542,7 @@ out center meta;
     } else {
       totalCost = dayPlans.fold<double>(0.0, (sum, day) => sum + (day.totalEstimatedCost ?? 0.0));
     }
-
+    
     return Itinerary(
       destination: destination,
       title: 'Your Adventure in $destination',
@@ -3560,7 +3560,7 @@ out center meta;
       word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1).toLowerCase()
     ).join(' ');
   }
-
+  
   // Helper to create activity from place name
   Activity _createActivityFromPlaceName(String placeName, String time, String timeOfDay) {
     final nameLower = placeName.toLowerCase();
@@ -3568,7 +3568,7 @@ out center meta;
     String description = 'Visit $placeName, one of the famous attractions in the area';
     String duration = '2-3 hours';
     String cost = '₹50-200 per person';
-
+    
     // Determine icon and description based on place type
     if (nameLower.contains('beach')) {
       icon = Icons.beach_access;
@@ -3616,7 +3616,7 @@ out center meta;
       cost = 'Varies';
       duration = '1-2 hours';
     }
-
+    
     return Activity(
       time: time,
       title: placeName,
@@ -3626,12 +3626,12 @@ out center meta;
       cost: cost,
     );
   }
-
+  
   // Generic activities when no curated data
   List<Activity> _getGenericDayActivities(String destination, int day, List<String> interests) {
     final lunchRestaurant = _getCuratedRestaurantName(destination, day, false);
     final dinnerRestaurant = _getCuratedRestaurantName(destination, day, true);
-
+    
     return [
       Activity(
         time: '9:00 AM',
@@ -3644,7 +3644,7 @@ out center meta;
       Activity(
         time: '12:30 PM',
         title: lunchRestaurant ?? 'Local Cuisine Experience',
-        description: lunchRestaurant != null
+        description: lunchRestaurant != null 
             ? 'Enjoy authentic local food at $lunchRestaurant'
             : 'Enjoy authentic local food and flavors of $destination',
         icon: Icons.restaurant_outlined,
@@ -3679,17 +3679,17 @@ out center meta;
       ),
     ];
   }
-
+  
   // Basic fallback when even curated fallback fails
   Itinerary _generateBasicFallbackItinerary(String destination, int durationInDays, List<String> interests, int travelers, {DateTime? startDate, DateTime? endDate, double? userBudget}) {
     final dayPlans = <DayPlan>[];
-
+    
     // Calculate daily budget if user provided budget
     double? dailyBudget;
     if (userBudget != null && durationInDays > 0) {
       dailyBudget = userBudget / durationInDays;
     }
-
+    
     for (int day = 1; day <= durationInDays; day++) {
       final activities = _getGenericDayActivities(destination, day, interests);
       final dayCost = dailyBudget ?? 2000.0 * travelers;
@@ -3700,7 +3700,7 @@ out center meta;
         totalEstimatedCost: dayCost,
       ));
     }
-
+    
     // Ensure total matches user budget exactly if provided
     double totalCost;
     if (userBudget != null) {
@@ -3720,7 +3720,7 @@ out center meta;
       endDate: endDate,
     );
   }
-
+  
   // Calculate cost for fallback activities
   double _calculateFallbackDayCost(List<Activity> activities, int travelers) {
     double total = 0;
@@ -3739,14 +3739,14 @@ out center meta;
     }
     return total > 0 ? total : 2000.0 * travelers; // Default if calculation fails
   }
-
+  
   // Get curated restaurant names for destinations
   String? _getCuratedRestaurantName(String? destination, int day, bool isDinner) {
     if (destination == null) return null;
-
+    
     final key = destination.toLowerCase();
     final restaurants = <String>[];
-
+    
     // Kerala destinations
     if (key.contains('kochi') || key.contains('cochin')) {
       restaurants.addAll([
@@ -3940,9 +3940,9 @@ out center meta;
         'Local Cuisine Restaurant', 'Regional Restaurant'
       ]);
     }
-
+    
     if (restaurants.isEmpty) return null;
-
+    
     // Select restaurant based on day (to vary across days)
     final index = (day - 1) % restaurants.length;
     return restaurants[index];

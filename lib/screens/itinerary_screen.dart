@@ -11,9 +11,39 @@ class ItineraryScreen extends StatelessWidget {
 
   const ItineraryScreen({super.key, required this.itinerary});
 
+  String? _formatTripDates() {
+    final start = itinerary.startDate;
+    final end = itinerary.endDate;
+    if (start == null) return null;
+
+    String fmt(DateTime d) {
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
+      return '${d.day} ${months[d.month - 1]} ${d.year}';
+    }
+
+    if (end == null || end.isAtSameMomentAs(start)) {
+      return fmt(start);
+    }
+    return '${fmt(start)}  –  ${fmt(end)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tripDatesText = _formatTripDates();
     return DefaultTabController(
       length: itinerary.dayPlans.length,
       child: Scaffold(
@@ -112,6 +142,22 @@ class ItineraryScreen extends StatelessWidget {
                             color: const Color(0xFF374151),
                             height: 1.4,
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (tripDatesText != null) ...[
+                        Row(
+                          children: [
+                            const Icon(Icons.event_outlined,
+                                size: 18, color: Color(0xFF6B7280)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Travel dates: $tripDatesText',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: const Color(0xFF4B5563),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 12),
                       ],

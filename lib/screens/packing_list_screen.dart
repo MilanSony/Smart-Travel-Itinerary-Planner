@@ -49,6 +49,25 @@ class _PackingListScreenState extends State<PackingListScreen> {
     _regenerateBaseListAndPersonalization();
   }
 
+  String _formatDateShort(DateTime d) {
+    const months = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final m = (d.month >= 1 && d.month <= 12) ? months[d.month - 1] : '';
+    return '$m ${d.day}, ${d.year}';
+  }
+
   Itinerary _withTravelerInfo(Itinerary base) {
     // Create a lightweight copy of the itinerary with the chosen traveler data
     // so packing logic can use it without changing the original object.
@@ -193,23 +212,40 @@ class _PackingListScreenState extends State<PackingListScreen> {
         _items.where((i) => i.isForChildren).toList(growable: false);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF6C5CE7),
+        backgroundColor: const Color(0xFF111827),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         foregroundColor: Colors.white,
-        title: const Text(
-          'Smart Packing List',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
+        centerTitle: false,
+        titleSpacing: 16,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Smart Packing List',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              widget.itinerary.destination,
+              style: const TextStyle(
+                color: Color(0xFFCBD5F5),
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'Saved lists for this destination',
+            icon: const Icon(Icons.history_rounded),
+            tooltip: 'Saved packing lists',
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -220,14 +256,6 @@ class _PackingListScreenState extends State<PackingListScreen> {
               );
             },
           ),
-          if (_items.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.save_outlined),
-              tooltip: _checkedIds.isEmpty
-                  ? 'Select at least 1 item to save'
-                  : 'Save selected items',
-              onPressed: _checkedIds.isEmpty ? null : _saveTransaction,
-            ),
         ],
       ),
       body: _items.isEmpty
@@ -244,7 +272,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
               ),
             )
           : Container(
-              color: const Color(0xFFF9FAFB),
+              color: const Color(0xFFF3F4F6),
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -276,10 +304,10 @@ class _PackingListScreenState extends State<PackingListScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withOpacity(0.08),
+                        color: const Color(0xFF0EA5E9).withOpacity(0.08),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: const Color(0xFF10B981).withOpacity(0.25),
+                          color: const Color(0xFF0EA5E9).withOpacity(0.25),
                         ),
                       ),
                       child: Row(
@@ -288,14 +316,14 @@ class _PackingListScreenState extends State<PackingListScreen> {
                           const Icon(
                             Icons.auto_awesome,
                             size: 18,
-                            color: Color(0xFF10B981),
+                            color: Color(0xFF0EA5E9),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _personalizationNote!,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: const Color(0xFF065F46),
+                                color: const Color(0xFF0C4A6E),
                                 height: 1.35,
                               ),
                             ),
@@ -306,17 +334,70 @@ class _PackingListScreenState extends State<PackingListScreen> {
                   ],
                   const SizedBox(height: 16),
                   if (generalItems.isNotEmpty) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        'General / Adult packing list',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF111827),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x12000000),
+                            blurRadius: 12,
+                            offset: Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF6366F1).withOpacity(0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.checklist_rounded,
+                                    size: 18,
+                                    color: Color(0xFF4F46E5),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'General / Adult packing list',
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF111827),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Weather-aware essentials and clothing for your trip.',
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: const Color(0xFF6B7280),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ...generalItems.map(
+                              (item) => _buildItemRow(theme, item),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    ...generalItems.map((item) => _buildItemRow(theme, item)),
                     const SizedBox(height: 20),
                   ],
                   if (childrenItems.isNotEmpty) ...[
@@ -325,6 +406,9 @@ class _PackingListScreenState extends State<PackingListScreen> {
                 ],
               ),
             ),
+      bottomNavigationBar: _items.isEmpty
+          ? null
+          : _buildBottomSaveBar(theme),
     );
   }
 
@@ -338,17 +422,27 @@ class _PackingListScreenState extends State<PackingListScreen> {
       days = actualEnd.difference(start).inDays + 1;
     }
 
+    final DateTime? computedEnd = start == null
+        ? null
+        : (end ?? start.add(Duration(days: (days ?? 1) - 1)));
+    final String? dateRange = (start != null && computedEnd != null)
+        ? '${_formatDateShort(start)}  →  ${_formatDateShort(computedEnd)}'
+        : null;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4F46E5), Color(0xFF0EA5E9)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 10,
-            offset: Offset(0, 4),
+            color: Color(0x33000000),
+            blurRadius: 18,
+            offset: Offset(0, 10),
           ),
         ],
       ),
@@ -356,38 +450,93 @@ class _PackingListScreenState extends State<PackingListScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(
-                  Icons.backpack_outlined,
-                  color: Color(0xFF10B981),
-                  size: 22,
+                  Icons.luggage_rounded,
+                  color: Colors.white,
+                  size: 24,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.itinerary.destination,
+                      widget.itinerary.title.isNotEmpty
+                          ? widget.itinerary.title
+                          : 'Upcoming trip',
                       style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF111827),
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      days != null ? '$days-day trip' : 'Upcoming trip',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF6B7280),
-                      ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.place_rounded,
+                          size: 15,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            widget.itinerary.destination,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                    if (dateRange != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.date_range_rounded,
+                            size: 15,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              dateRange,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (days != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_month_rounded,
+                            size: 15,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$days-day itinerary',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -395,9 +544,9 @@ class _PackingListScreenState extends State<PackingListScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'This packing list is generated automatically using your destination, trip duration, planned activities and the latest weather forecast.',
+            'AI-generated packing, tuned for your weather, duration, travellers and activities.',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF6B7280),
+              color: Colors.white.withOpacity(0.9),
               height: 1.35,
             ),
           ),
@@ -430,6 +579,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
             children: [
               Expanded(
                 child: _buildStepper(
+                  theme: theme,
                   label: 'Adults',
                   value: _numAdults,
                   min: 1,
@@ -442,6 +592,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildStepper(
+                  theme: theme,
                   label: 'Children',
                   value: _numChildren,
                   min: 0,
@@ -479,6 +630,7 @@ class _PackingListScreenState extends State<PackingListScreen> {
   }
 
   Widget _buildStepper({
+    required ThemeData theme,
     required String label,
     required int value,
     required int min,
@@ -488,9 +640,26 @@ class _PackingListScreenState extends State<PackingListScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Flexible(
-          child: Text(
-            label,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Tap + / - to adjust',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF9CA3AF),
+                  fontSize: 11,
+                ),
+              ),
+            ],
           ),
         ),
         Row(
@@ -1129,9 +1298,18 @@ class _PackingListScreenState extends State<PackingListScreen> {
   Widget _buildItemRow(ThemeData theme, PackingItem item) {
     final checked = _checkedIds.contains(item.id);
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 6),
+      decoration: BoxDecoration(
+        color: checked ? const Color(0xFFEEF2FF) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: checked ? const Color(0xFF4F46E5) : const Color(0xFFE5E7EB),
+          width: checked ? 1.5 : 1,
+        ),
+      ),
       child: InkWell(
+        borderRadius: BorderRadius.circular(12),
         onTap: () {
           setState(() {
             if (checked) {
@@ -1141,73 +1319,160 @@ class _PackingListScreenState extends State<PackingListScreen> {
             }
           });
         },
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Checkbox(
-              value: checked,
-              onChanged: (_) {
-                setState(() {
-                  if (checked) {
-                    _checkedIds.remove(item.id);
-                  } else {
-                    _checkedIds.add(item.id);
-                  }
-                });
-              },
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.name,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF111827),
-                          ),
-                        ),
-                      ),
-                      if (item.isEssential) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF97316).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Text(
-                            'Essential',
-                            style: TextStyle(
-                              fontSize: 10,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: checked ? const Color(0xFF4F46E5) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: checked ? const Color(0xFF4F46E5) : const Color(0xFFD1D5DB),
+                    width: 2,
+                  ),
+                ),
+                child: checked
+                    ? const Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 14,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFFC2410C),
+                              color: const Color(0xFF111827),
                             ),
                           ),
                         ),
+                        if (item.isEssential) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF97316).withOpacity(0.16),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Text(
+                              'Essential',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFFC2410C),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                  if (item.reason != null && item.reason!.trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        item.reason!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF6B7280),
-                          height: 1.35,
+                    ),
+                    if (item.reason != null && item.reason!.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          item.reason!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF6B7280),
+                            height: 1.35,
+                          ),
                         ),
                       ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomSaveBar(ThemeData theme) {
+    final selectedCount = _checkedIds.length;
+    final hasSelection = selectedCount > 0;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x1F000000),
+              blurRadius: 12,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    hasSelection
+                        ? '$selectedCount item${selectedCount > 1 ? 's' : ''} selected'
+                        : 'Select items to save',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF111827),
                     ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'We use your saved lists to personalize future trips.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF6B7280),
+                    ),
+                  ),
                 ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              height: 44,
+              child: ElevatedButton.icon(
+                onPressed: hasSelection ? _saveTransaction : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4F46E5),
+                  disabledBackgroundColor: const Color(0xFFE5E7EB),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                icon: const Icon(
+                  Icons.save_alt_rounded,
+                  size: 18,
+                ),
+                label: Text(
+                  hasSelection ? 'Save packing list' : 'Save',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
               ),
             ),
           ],

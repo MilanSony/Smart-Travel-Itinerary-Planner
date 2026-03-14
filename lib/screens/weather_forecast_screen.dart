@@ -717,9 +717,39 @@ class _WeatherForecastScreenState extends State<WeatherForecastScreen> {
     return '${weekdays[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}';
   }
 
+  String? _formatTripDates(Itinerary itinerary) {
+    final start = itinerary.startDate;
+    final end = itinerary.endDate;
+    if (start == null) return null;
+
+    String fmt(DateTime d) {
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
+      return '${d.day} ${months[d.month - 1]} ${d.year}';
+    }
+
+    if (end == null || end.isAtSameMomentAs(start)) {
+      return fmt(start);
+    }
+    return '${fmt(start)}  –  ${fmt(end)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tripDatesText = _formatTripDates(widget.itinerary);
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -855,6 +885,15 @@ class _WeatherForecastScreenState extends State<WeatherForecastScreen> {
                                   color: Colors.white70,
                                 ),
                               ),
+                              if (tripDatesText != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Travel dates: $tripDatesText',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),

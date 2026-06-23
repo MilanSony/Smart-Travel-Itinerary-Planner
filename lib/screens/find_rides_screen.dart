@@ -4,6 +4,7 @@ import '../models/ride_model.dart';
 import '../services/ride_matching_service.dart';
 import '../widgets/image_background.dart';
 import '../config/theme.dart';
+import 'upi_payment_screen.dart';
 
 class FindRidesScreen extends StatefulWidget {
   const FindRidesScreen({super.key});
@@ -800,6 +801,21 @@ class _RideOfferCardState extends State<_RideOfferCard> {
       );
 
       if (acceptedMatch.id.isNotEmpty && acceptedMatch.driverContact != null) {
+        // Payment gate: unlock contact + OTP only after payment choice is confirmed
+        if (!acceptedMatch.contactUnlocked) {
+          await _showPaymentChoiceDialog(acceptedMatch);
+          // Re-fetch latest match after possible payment update
+          final refreshedMatches =
+              await _rideService.getPassengerRideMatches(user.uid).first;
+          final refreshedMatch = refreshedMatches.firstWhere(
+            (m) => m.id == acceptedMatch.id,
+            orElse: () => acceptedMatch,
+          );
+          if (!refreshedMatch.contactUnlocked) {
+            return;
+          }
+        }
+
         // Show actual contact info with passenger contact sharing option
         showDialog(
           context: context,
@@ -995,6 +1011,133 @@ class _RideOfferCardState extends State<_RideOfferCard> {
         ),
       );
     }
+  }
+
+  Future<void> _showPaymentChoiceDialog(RideMatch match) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    String? chosen;
+    bool isProcessing = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !isProcessing,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Complete Payment to Unlock Contact'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Driver accepted your request. Choose a payment option for ₹${widget.offer.costPerSeat.toInt()} per seat.',
+              ),
+              const SizedBox(height: 12),
+              RadioListTile<String>(
+                value: 'cash',
+                groupValue: chosen,
+                onChanged: isProcessing
+                    ? null
+                    : (v) => setState(() => chosen = v),
+                title: const Text('Cash (pay driver directly)'),
+              ),
+              RadioListTile<String>(
+                value: 'upi',
+                groupValue: chosen,
+                onChanged: isProcessing
+                    ? null
+                    : (v) => setState(() => chosen = v),
+                title: const Text('UPI (Razorpay)'),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'After confirmation, contact number and OTP will be shown.',
+                style: TextStyle(color: Colors.grey[700], fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isProcessing ? null : () => Navigator.pop(context),
+              child: const Text('Later'),
+            ),
+            ElevatedButton(
+              onPressed: (chosen == null || isProcessing)
+                  ? null
+                  : () async {
+                      setState(() => isProcessing = true);
+                      try {
+                        if (chosen == 'cash') {
+                          await _rideService.confirmCashPayment(match.id);
+                          if (context.mounted) Navigator.pop(context);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                    'Cash option confirmed. Contact unlocked.'),
+                                backgroundColor: Colors.green[900],
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                          return;
+                        }
+
+                        // UPI via Razorpay
+                        // Dummy UPI "Razorpay-like" screen.
+                        // Contact unlock will happen only after that screen returns success.
+                        final ok = await Navigator.of(context).push<bool>(
+                              MaterialPageRoute(
+                                builder: (_) => UpiPaymentScreen(
+                                  matchId: match.id,
+                                  amount: widget.offer.costPerSeat,
+                                  passengerEmail: user.email ?? '',
+                                  rideService: _rideService,
+                                ),
+                              ),
+                            ) ??
+                            false;
+
+                        if (ok) {
+                          if (context.mounted) Navigator.pop(context);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                    'Payment successful. Contact unlocked.'),
+                                backgroundColor: Colors.green[900],
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        await _rideService.markUpiPaymentFailed(
+                          match.id,
+                          error: e.toString(),
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Payment failed: $e'),
+                              backgroundColor: Colors.red[900],
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      } finally {
+                        if (context.mounted) {
+                          setState(() => isProcessing = false);
+                        }
+                      }
+                    },
+              child: Text(chosen == 'upi' ? 'Pay & Unlock' : 'Confirm & Unlock'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // Removed old OTP verification methods - now using vehicle entry OTP only

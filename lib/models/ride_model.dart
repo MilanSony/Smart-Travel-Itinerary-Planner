@@ -157,6 +157,13 @@ class RideMatch {
   final String passengerEmail;
   final String? passengerContact;
   final String status; // 'pending', 'accepted', 'rejected', 'completed'
+  final String paymentMethod; // 'none', 'cash', 'upi'
+  final String paymentStatus; // 'pending', 'cash_confirmed', 'paid', 'failed'
+  final String? paymentGateway; // e.g. 'razorpay'
+  final String? paymentOrderId;
+  final String? paymentId;
+  final String? paymentSignature;
+  final bool contactUnlocked; // whether contact/OTP can be shown to passenger
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? driverPickupLocation;
@@ -177,6 +184,13 @@ class RideMatch {
     required this.passengerEmail,
     this.passengerContact,
     this.status = 'pending',
+    this.paymentMethod = 'none',
+    this.paymentStatus = 'pending',
+    this.paymentGateway,
+    this.paymentOrderId,
+    this.paymentId,
+    this.paymentSignature,
+    this.contactUnlocked = false,
     required this.createdAt,
     required this.updatedAt,
     this.driverPickupLocation,
@@ -200,6 +214,13 @@ class RideMatch {
       passengerEmail: data['passengerEmail'] ?? '',
       passengerContact: data['passengerContact'],
       status: data['status'] ?? 'pending',
+      paymentMethod: data['paymentMethod'] ?? 'none',
+      paymentStatus: data['paymentStatus'] ?? 'pending',
+      paymentGateway: data['paymentGateway'],
+      paymentOrderId: data['paymentOrderId'],
+      paymentId: data['paymentId'],
+      paymentSignature: data['paymentSignature'],
+      contactUnlocked: data['contactUnlocked'] ?? false,
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       updatedAt: (data['updatedAt'] as Timestamp).toDate(),
       driverPickupLocation: data['driverPickupLocation'],
@@ -222,6 +243,13 @@ class RideMatch {
       'passengerEmail': passengerEmail,
       'passengerContact': passengerContact,
       'status': status,
+      'paymentMethod': paymentMethod,
+      'paymentStatus': paymentStatus,
+      'paymentGateway': paymentGateway,
+      'paymentOrderId': paymentOrderId,
+      'paymentId': paymentId,
+      'paymentSignature': paymentSignature,
+      'contactUnlocked': contactUnlocked,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       'driverPickupLocation': driverPickupLocation,

@@ -479,11 +479,73 @@ class RideMatchingService {
       'driverContact': driverContact,
       'driverPickupLocation': driverPickupLocation,
       'driverPickupTime': driverPickupTime,
+      'paymentMethod': 'none',
+      'paymentStatus': 'pending',
+      'contactUnlocked': false,
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
     // Update available seats (assuming 1 seat is requested)
     await updateAvailableSeats(rideOfferId, 1);
+  }
+
+  /// Passenger selects a payment method after driver accepts
+  Future<void> setPassengerPaymentMethod(String matchId, String method) async {
+    if (method != 'cash' && method != 'upi') {
+      throw Exception('Invalid payment method');
+    }
+    await _db.collection('ride_matches').doc(matchId).update({
+      'paymentMethod': method,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Passenger confirms cash payment choice (no gateway). Unlocks contact + OTP.
+  Future<void> confirmCashPayment(String matchId) async {
+    await _db.collection('ride_matches').doc(matchId).update({
+      'paymentMethod': 'cash',
+      'paymentStatus': 'cash_confirmed',
+      'contactUnlocked': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Marks UPI payment as successful (gateway details stored). Unlocks contact + OTP.
+  Future<void> markUpiPaymentSuccess(
+    String matchId, {
+    String gateway = 'razorpay',
+    String? orderId,
+    required String paymentId,
+    String? signature,
+  }) async {
+    await _db.collection('ride_matches').doc(matchId).update({
+      'paymentMethod': 'upi',
+      'paymentStatus': 'paid',
+      'paymentGateway': gateway,
+      'paymentOrderId': orderId,
+      'paymentId': paymentId,
+      'paymentSignature': signature,
+      'contactUnlocked': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Marks UPI payment as failed/cancelled.
+  Future<void> markUpiPaymentFailed(
+    String matchId, {
+    String gateway = 'razorpay',
+    String? orderId,
+    String? paymentId,
+    String? error,
+  }) async {
+    await _db.collection('ride_matches').doc(matchId).update({
+      'paymentMethod': 'upi',
+      'paymentStatus': 'failed',
+      'paymentGateway': gateway,
+      'paymentOrderId': orderId,
+      'paymentId': paymentId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   /// Rejects a ride match

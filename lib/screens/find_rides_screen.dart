@@ -1084,9 +1084,8 @@ class _RideOfferCardState extends State<_RideOfferCard> {
                           return;
                         }
 
-                        // UPI via Razorpay
-                        // Dummy UPI "Razorpay-like" screen.
-                        // Contact unlock will happen only after that screen returns success.
+                        // UPI via Razorpay-like checkout screen.
+                        // Contact unlock happens only after that screen returns success.
                         final ok = await Navigator.of(context).push<bool>(
                               MaterialPageRoute(
                                 builder: (_) => UpiPaymentScreen(

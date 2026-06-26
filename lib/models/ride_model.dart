@@ -1,5 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Reads a Firestore timestamp safely.
+///
+/// [FieldValue.serverTimestamp] writes can briefly surface as null in local
+/// snapshots before the server value arrives.
+DateTime _readFirestoreDate(dynamic value, {DateTime? fallback}) {
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  return fallback ?? DateTime.now();
+}
+
 class RideOffer {
   final String id;
   final String userId;
@@ -49,7 +59,7 @@ class RideOffer {
       userPhotoUrl: data['userPhotoUrl'],
       destination: data['destination'] ?? '',
       pickupLocation: data['pickupLocation'] ?? '',
-      pickupDate: (data['pickupDate'] as Timestamp).toDate(),
+      pickupDate: _readFirestoreDate(data['pickupDate']),
       pickupTime: data['pickupTime'] ?? '',
       availableSeats: data['availableSeats'] ?? 1,
       costPerSeat: data['costPerSeat']?.toDouble() ?? 0.0,
@@ -57,8 +67,11 @@ class RideOffer {
       vehicleModel: data['vehicleModel'] ?? '',
       additionalInfo: data['additionalInfo'],
       status: data['status'] ?? 'active',
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      createdAt: _readFirestoreDate(data['createdAt']),
+      updatedAt: _readFirestoreDate(
+        data['updatedAt'],
+        fallback: _readFirestoreDate(data['createdAt']),
+      ),
     );
   }
 
@@ -121,8 +134,11 @@ class RideRequest {
       userPhotoUrl: data['userPhotoUrl'],
       rideOfferId: data['rideOfferId'] ?? '',
       status: data['status'] ?? 'pending',
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      createdAt: _readFirestoreDate(data['createdAt']),
+      updatedAt: _readFirestoreDate(
+        data['updatedAt'],
+        fallback: _readFirestoreDate(data['createdAt']),
+      ),
       passengerContact: data['passengerContact'],
       passengerName: data['passengerName'],
     );
@@ -221,8 +237,11 @@ class RideMatch {
       paymentId: data['paymentId'],
       paymentSignature: data['paymentSignature'],
       contactUnlocked: data['contactUnlocked'] ?? false,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+      createdAt: _readFirestoreDate(data['createdAt']),
+      updatedAt: _readFirestoreDate(
+        data['updatedAt'],
+        fallback: _readFirestoreDate(data['createdAt']),
+      ),
       driverPickupLocation: data['driverPickupLocation'],
       driverPickupTime: data['driverPickupTime'],
       vehicleEntryOTP: data['vehicleEntryOTP'],

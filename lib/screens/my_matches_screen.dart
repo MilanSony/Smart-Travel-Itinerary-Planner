@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/ride_model.dart';
 import '../services/ride_matching_service.dart';
@@ -263,143 +264,9 @@ class _RideMatchCardState extends State<_RideMatchCard> {
   }
 
   Future<Map<String, String>?> _showContactInfoDialog() async {
-    final contactController = TextEditingController();
-    final pickupLocationController = TextEditingController();
-    final pickupTimeController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
     return showDialog<Map<String, String>>(
       context: context,
-      builder: (context) => Dialog(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Share Your Contact Info',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: contactController,
-                    decoration: const InputDecoration(
-                      labelText: 'Your Contact Number *',
-                      hintText: '9876543210',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.phone,
-                    maxLength: 10,
-                    buildCounter: (context,
-                            {required currentLength,
-                            required isFocused,
-                            maxLength}) =>
-                        Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text('$currentLength / $maxLength digits'),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Required';
-                      }
-                      // Check for exactly 10 digits
-                      if (value.trim().length != 10) {
-                        return 'Phone number must be exactly 10 digits';
-                      }
-                      // Check if all characters are digits
-                      if (!RegExp(r'^\d+$').hasMatch(value.trim())) {
-                        return 'Phone number must contain only digits';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: pickupLocationController,
-                    decoration: const InputDecoration(
-                      labelText: 'Pickup Location *',
-                      hintText: 'Where will you pick up?',
-                      border: OutlineInputBorder(),
-                      helperText: 'Enter a valid place in India',
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Required';
-                      }
-                      // Check if the entered value matches any valid place
-                      final enteredValue = value.trim();
-                      final isInvalid = !validPlaces.any((place) =>
-                          place.toLowerCase() == enteredValue.toLowerCase() ||
-                          place
-                              .toLowerCase()
-                              .contains(enteredValue.toLowerCase()) ||
-                          enteredValue
-                              .toLowerCase()
-                              .contains(place.toLowerCase()));
-                      if (isInvalid) {
-                        return 'Invalid place. Enter a valid place in India';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: pickupTimeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Pickup Time *',
-                      hintText: '09:00 AM',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Required';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () {
-                          if (formKey.currentState!.validate()) {
-                            Navigator.pop(context, {
-                              'contact': contactController.text.trim(),
-                              'pickupLocation':
-                                  pickupLocationController.text.trim(),
-                              'pickupTime': pickupTimeController.text.trim(),
-                            });
-                          }
-                        },
-                        child: const Text('Share'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      builder: (context) => const _DriverContactInfoDialog(),
     );
   }
 
@@ -828,5 +695,210 @@ class _RideMatchCardState extends State<_RideMatchCard> {
       default:
         return Colors.grey;
     }
+  }
+}
+
+class _DriverContactInfoDialog extends StatefulWidget {
+  const _DriverContactInfoDialog();
+
+  @override
+  State<_DriverContactInfoDialog> createState() =>
+      _DriverContactInfoDialogState();
+}
+
+class _DriverContactInfoDialogState extends State<_DriverContactInfoDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _contactController = TextEditingController();
+  final _pickupLocationController = TextEditingController();
+  String? _pickupTime;
+  String? _pickupTimeError;
+
+  @override
+  void dispose() {
+    _contactController.dispose();
+    _pickupLocationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectPickupTime() async {
+    TimeOfDay initialTime = const TimeOfDay(hour: 9, minute: 0);
+    if (_pickupTime != null) {
+      final parts = _pickupTime!.split(':');
+      if (parts.length == 2) {
+        final hour = int.tryParse(parts[0]);
+        final minute = int.tryParse(parts[1]);
+        if (hour != null && minute != null) {
+          initialTime = TimeOfDay(hour: hour, minute: minute);
+        }
+      }
+    }
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+    );
+
+    if (time != null) {
+      setState(() {
+        _pickupTime =
+            '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+        _pickupTimeError = null;
+      });
+    }
+  }
+
+  String? _validateContact(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Phone number is required';
+    }
+    final phone = value.trim();
+    if (phone.length != 10) {
+      return 'Phone number must be exactly 10 digits';
+    }
+    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
+      return 'Enter a valid Indian mobile number';
+    }
+    return null;
+  }
+
+  String? _validatePickupLocation(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Pickup location is required';
+    }
+    final enteredValue = value.trim();
+    final isValid = validPlaces.any((place) =>
+        place.toLowerCase() == enteredValue.toLowerCase() ||
+        place.toLowerCase().contains(enteredValue.toLowerCase()) ||
+        enteredValue.toLowerCase().contains(place.toLowerCase()));
+    if (!isValid) {
+      return 'Enter a valid place in India (e.g., Kochi, Kottayam)';
+    }
+    return null;
+  }
+
+  bool _validatePickupTime() {
+    if (_pickupTime == null || _pickupTime!.isEmpty) {
+      setState(() => _pickupTimeError = 'Please select pickup time');
+      return false;
+    }
+    setState(() => _pickupTimeError = null);
+    return true;
+  }
+
+  void _submit() {
+    final isFormValid = _formKey.currentState!.validate();
+    final isTimeValid = _validatePickupTime();
+    if (!isFormValid || !isTimeValid) return;
+
+    Navigator.pop(context, {
+      'contact': _contactController.text.trim(),
+      'pickupLocation': _pickupLocationController.text.trim(),
+      'pickupTime': _pickupTime!,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Share Your Contact Info',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _contactController,
+                  decoration: const InputDecoration(
+                    labelText: 'Your Contact Number *',
+                    hintText: '9876543210',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  maxLength: 10,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  buildCounter: (context,
+                          {required currentLength,
+                          required isFocused,
+                          maxLength}) =>
+                      Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text('$currentLength / $maxLength digits'),
+                  ),
+                  validator: _validateContact,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _pickupLocationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Pickup Location *',
+                    hintText: 'Where will you pick up?',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.location_on),
+                    helperText: 'Enter a valid place in India',
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  validator: _validatePickupLocation,
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: _selectPickupTime,
+                  borderRadius: BorderRadius.circular(4),
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Pickup Time *',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.access_time),
+                      errorText: _pickupTimeError,
+                      helperText: 'Tap to select time',
+                    ),
+                    child: Text(
+                      _pickupTime ?? 'Select Time',
+                      style: TextStyle(
+                        color: _pickupTime != null
+                            ? Colors.black87
+                            : Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _submit,
+                      child: const Text('Share'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

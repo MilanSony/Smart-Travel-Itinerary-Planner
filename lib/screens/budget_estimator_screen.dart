@@ -7,6 +7,7 @@ import '../models/itinerary_model.dart';
 import '../services/budget_estimator_service.dart';
 import '../providers/theme_provider.dart';
 import '../widgets/gradient_background.dart';
+import 'split_budget_screen.dart';
 
 class BudgetEstimatorScreen extends StatefulWidget {
   final String? tripId;
@@ -172,6 +173,18 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
     }
   }
 
+  void _openSplitBudget(BuildContext context) {
+    if (_currentEstimation == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SplitBudgetScreen(
+          estimation: _currentEstimation!,
+          itinerary: widget.itinerary,
+        ),
+      ),
+    );
+  }
+
   Future<void> _optimizeBudget(double? targetBudget) async {
     if (_currentEstimation == null) return;
 
@@ -266,6 +279,12 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
       appBar: AppBar(
         title: const Text('AI Budget Estimator'),
         actions: [
+          if (_currentEstimation != null)
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              tooltip: 'Split & Settle',
+              onPressed: () => _openSplitBudget(context),
+            ),
           if (_currentEstimation != null)
             IconButton(
               icon: Icon(_showPerPerson ? Icons.group : Icons.person),
@@ -724,6 +743,68 @@ class _BudgetEstimatorScreenState extends State<BudgetEstimatorScreen>
                       'Daily Average$perLabel',
                       '₹${NumberFormat('#,##,###').format(view(estimation.estimatedTotalCost / (estimation.endDate.difference(estimation.startDate).inDays + 1)).toInt())}',
                     theme,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 4,
+            color: const Color(0xFF6C5CE7).withValues(alpha: 0.08),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6C5CE7).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.people_alt_outlined,
+                          color: Color(0xFF6C5CE7),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Split & Settle',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Divide costs by traveller, log who paid, and see who owes whom.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _openSplitBudget(context),
+                      icon: const Icon(Icons.arrow_forward),
+                      label: const Text('Open cost sharing'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF6C5CE7),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
                   ),
                 ],
               ),

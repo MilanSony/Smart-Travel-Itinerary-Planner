@@ -580,6 +580,13 @@ class ItineraryScreen extends StatelessWidget {
     }
   }
 
+  int _travelerCount() {
+    final adults = itinerary.numAdults ?? 0;
+    final children = itinerary.numChildren ?? 0;
+    final total = adults + children;
+    return total > 0 ? total : 2;
+  }
+
   void _openBudgetEstimator(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -588,7 +595,7 @@ class ItineraryScreen extends StatelessWidget {
           destination: itinerary.destination,
           startDate: itinerary.startDate,
           endDate: itinerary.endDate,
-          travelers: 2, // default fallback; planner can adjust
+          travelers: _travelerCount(),
           initialBudget: itinerary.totalEstimatedCost,
           itinerary: itinerary,
           budgetLevel: null,

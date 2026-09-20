@@ -261,8 +261,9 @@ class ItineraryService {
         dayPlans: dayPlans,
         summary: _generateSummary(destination, durationInDays, interests),
         totalEstimatedCost: totalCost,
-          startDate: startDate,
-          endDate: endDate,
+        startDate: startDate,
+        endDate: endDate,
+        numAdults: travelers,
       );
 
     } catch (e) {
@@ -3551,6 +3552,7 @@ out center meta;
       totalEstimatedCost: totalCost,
       startDate: startDate,
       endDate: endDate,
+      numAdults: travelers,
     );
   }
 
@@ -3718,6 +3720,7 @@ out center meta;
       totalEstimatedCost: totalCost,
       startDate: startDate,
       endDate: endDate,
+      numAdults: travelers,
     );
   }
   

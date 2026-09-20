@@ -10,16 +10,24 @@ enum _PaymentStep { methodSelection, upiPin, processing, success }
 class UpiPaymentScreen extends StatefulWidget {
   const UpiPaymentScreen({
     super.key,
-    required this.matchId,
     required this.amount,
-    required this.passengerEmail,
-    required this.rideService,
+    this.matchId,
+    this.passengerEmail = '',
+    this.rideService,
+    this.purposeLabel = 'Ride seat booking',
+    this.successHint = 'Contact & OTP unlocked',
+    this.payeeName,
+    this.payerName,
   });
 
-  final String matchId;
+  final String? matchId;
   final double amount;
   final String passengerEmail;
-  final RideMatchingService rideService;
+  final RideMatchingService? rideService;
+  final String purposeLabel;
+  final String successHint;
+  final String? payeeName;
+  final String? payerName;
 
   @override
   State<UpiPaymentScreen> createState() => _UpiPaymentScreenState();
@@ -121,7 +129,7 @@ class _UpiPaymentScreenState extends State<UpiPaymentScreen>
       return;
     }
 
-    _showError('Only UPI is available for ride booking right now.');
+    _showError('Only UPI is available right now.');
   }
 
   void _showError(String message) {
@@ -206,26 +214,36 @@ class _UpiPaymentScreenState extends State<UpiPaymentScreen>
     });
 
     try {
-      await widget.rideService.setPassengerPaymentMethod(widget.matchId, 'upi');
+      final rideService = widget.rideService;
+      final matchId = widget.matchId;
+      if (rideService != null && matchId != null) {
+        await rideService.setPassengerPaymentMethod(matchId, 'upi');
+      }
       await Future<void>.delayed(const Duration(milliseconds: 1200));
 
-      final now = DateTime.now().millisecondsSinceEpoch;
-      await widget.rideService.markUpiPaymentSuccess(
-        widget.matchId,
-        paymentId: 'DUMMY_UPI_$now',
-        orderId: 'DUMMY_ORDER_$now',
-        signature: 'DUMMY_SIGNATURE',
-      );
+      if (rideService != null && matchId != null) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await rideService.markUpiPaymentSuccess(
+          matchId,
+          paymentId: 'DUMMY_UPI_$now',
+          orderId: 'DUMMY_ORDER_$now',
+          signature: 'DUMMY_SIGNATURE',
+        );
+      }
 
       if (!mounted) return;
       setState(() => _step = _PaymentStep.success);
       await _successAnim.forward();
     } catch (e) {
       if (!mounted) return;
-      await widget.rideService.markUpiPaymentFailed(
-        widget.matchId,
-        error: e.toString(),
-      );
+      final rideService = widget.rideService;
+      final matchId = widget.matchId;
+      if (rideService != null && matchId != null) {
+        await rideService.markUpiPaymentFailed(
+          matchId,
+          error: e.toString(),
+        );
+      }
       setState(() {
         _step = _PaymentStep.upiPin;
         _pin = '';
@@ -882,13 +900,20 @@ class _UpiPaymentScreenState extends State<UpiPaymentScreen>
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 16),
-            _detailRow('Ride seat booking', '₹ $_amountFormatted'),
+            _detailRow(widget.purposeLabel, '₹ $_amountFormatted'),
+            if (widget.payerName != null && widget.payeeName != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${widget.payerName} pays ${widget.payeeName}',
+                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+              ),
+            ],
             _detailRow('Platform fee', '₹ 0'),
             const Divider(height: 28),
             _detailRow('Total payable', '₹ $_amountFormatted', bold: true),
             const SizedBox(height: 12),
             Text(
-              'Driver contact & OTP unlock only after successful UPI payment.',
+              widget.successHint,
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
           ],
@@ -959,7 +984,9 @@ class _UpiPaymentScreenState extends State<UpiPaymentScreen>
                             fontSize: 16, fontWeight: FontWeight.w700),
                       ),
                       Text(
-                        'Paying via $_selectedUpiLabel',
+                        widget.payerName != null && widget.payeeName != null
+                            ? '${widget.payerName} \u2192 ${widget.payeeName}'
+                            : 'Paying via $_selectedUpiLabel',
                         style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                       ),
                     ],
@@ -977,9 +1004,11 @@ class _UpiPaymentScreenState extends State<UpiPaymentScreen>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'XXXXXX9238',
-                style: TextStyle(
+              Text(
+                widget.payeeName != null
+                    ? 'To ${widget.payeeName}'
+                    : 'XXXXXX9238',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
                   letterSpacing: 1.2,
@@ -1286,7 +1315,7 @@ class _UpiPaymentScreenState extends State<UpiPaymentScreen>
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Contact & OTP unlocked',
+                        widget.successHint,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.85),
                           fontSize: 13,
